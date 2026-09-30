@@ -142,3 +142,14 @@ Khi có mâu thuẫn thông tin, agent ưu tiên theo thứ tự sau:
 - Nhiều nội dung trong báo cáo gốc còn để trống hoặc đánh dấu "bổ sung sau" (kết quả kiểm thử, số liệu độ trễ, đường dẫn GitHub, chi tiết triển khai thực tế). Các phần này được giữ nguyên là `TODO/UNDEFINED` trong toàn bộ tài liệu — agent không được tự bịa số liệu hoặc kết quả.
 - Khi làm UI, không tự thêm page/feature ngoài scope chỉ vì một mockup hoặc thư viện UI có sẵn cung cấp nó.
 - Khi cập nhật tiến độ, không tự đánh dấu phase `Done` nếu Definition of Done của phase trong `PLAN.md` chưa đạt đủ.
+
+## Quy tắc Commit
+
+Sau khi hoàn thành mỗi task hoặc phase, phần báo cáo cuối cùng phải bao gồm một commit message được đề xuất theo chuẩn Conventional Commits.
+
+Ví dụ:
+
+Suggested commit:
+`chore(setup): khởi tạo project scaffolding`
+
+Chỉ đề xuất commit, không tự động thực hiện commit nếu người dùng chưa yêu cầu.
