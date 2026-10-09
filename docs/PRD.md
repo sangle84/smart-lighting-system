@@ -28,7 +28,7 @@ Hệ thống cung cấp các nhóm mục tiêu chính sau:
 
 Phạm vi triển khai hiện tại của hệ thống (theo mục 1.2.3 báo cáo gốc):
 
-- 01 node ESP32 cho prototype.
+- 01 node ESP32 **vật lý** (`LIGHT-001`) cho prototype, cộng thiết bị **mô phỏng** (`LIGHT-002`, trình giả lập MQTT) chỉ dùng để kiểm thử phân quyền, thu hồi và mở rộng; thiết bị mô phỏng không thay thế thiết bị vật lý.
 - LED strip 2835 DC 12V làm cơ cấu chấp hành.
 - BH1750, RCWL-0516 và INA219 làm cảm biến.
 - MQTT/Mosquitto làm giao thức IoT.
@@ -55,9 +55,9 @@ Phạm vi hiện tại **không bao gồm** (giữ nguyên theo báo cáo gốc 
 
 | Vai trò | Mô tả | Quyền chính |
 |---|---|---|
-| **Admin** | Quản trị hệ thống | User, Device, cấu hình, điều khiển, cảnh báo |
-| **Operator** | Người vận hành | Xem, điều khiển đèn, xử lý cảnh báo |
-| **Viewer** | Người giám sát | Chỉ xem dashboard, lịch sử và trạng thái |
+| **Admin** | Quản trị hệ thống | User, Device, cấu hình, điều khiển, cảnh báo, cấp quyền truy cập thiết bị — trên mọi thiết bị |
+| **Operator** | Người vận hành | Xem, điều khiển đèn, xử lý cảnh báo — **trên thiết bị được cấp quyền** |
+| **Viewer** | Người giám sát | Chỉ xem dashboard, lịch sử và trạng thái — **trên thiết bị được cấp quyền** |
 
 ## 6. Functional Requirements
 
@@ -79,6 +79,8 @@ Phạm vi hiện tại **không bao gồm** (giữ nguyên theo báo cáo gốc 
 | FR-014 | Backend phải nhận lệnh điều khiển từ Web và gửi xuống ESP32 qua MQTT, đồng thời nhận ACK phản hồi. |
 | FR-015 | Backend phải tạo cảnh báo `LAMP_FAULT` khi đèn được yêu cầu bật nhưng dòng điện thấp hơn ngưỡng trong khoảng thời gian xác định. |
 | FR-016 | Backend/hệ thống phải tạo cảnh báo `DEVICE_OFFLINE` khi heartbeat của thiết bị bị timeout. |
+| FR-017 | Hệ thống phải cho phép Admin cấp và thu hồi quyền truy cập thiết bị cho Operator/Viewer; Operator/Viewer chỉ truy cập thiết bị và dữ liệu của thiết bị được cấp quyền. |
+| FR-018 | Hệ thống phải cho phép Admin tạm khóa thiết bị (`MAINTENANCE`) và thu hồi thiết bị (`DECOMMISSIONED`); thiết bị bị khóa/thu hồi không được kết nối MQTT hay gửi dữ liệu. |
 
 ## 7. Use Cases
 
@@ -96,6 +98,7 @@ Phạm vi hiện tại **không bao gồm** (giữ nguyên theo báo cáo gốc 
 | UC10 | Adaptive Lighting | System / ESP32 |
 | UC11 | Cấu hình Adaptive Lighting | Admin |
 | UC12 | Xử lý cảnh báo | Admin, Operator |
+| UC13 | Quản lý quyền truy cập thiết bị | Admin |
 
 ### UC01 — Đăng nhập / Đăng xuất
 - **Actor:** Admin, Operator, Viewer
@@ -184,6 +187,13 @@ Phạm vi hiện tại **không bao gồm** (giữ nguyên theo báo cáo gốc 
 - **Expected behavior:** UNDEFINED
 - **Permission:** Admin, Operator (Viewer không có quyền — xem Business Rules).
 
+### UC13 — Quản lý quyền truy cập thiết bị
+- **Actor:** Admin
+- **Description:** Admin cấp hoặc thu hồi quyền truy cập một thiết bị cho user có vai trò Operator/Viewer.
+- **Preconditions:** UNDEFINED
+- **Expected behavior:** Admin đặt danh sách user được truy cập thiết bị qua `PUT /devices/:id/access`; từ đó Operator/Viewer chỉ thấy và thao tác trên thiết bị được cấp. Thiết bị không được cấp trả `404`.
+- **Permission:** Chỉ Admin.
+
 ## 8. Business Rules
 
 - Viewer không được điều khiển đèn.
@@ -194,11 +204,39 @@ Phạm vi hiện tại **không bao gồm** (giữ nguyên theo báo cáo gốc 
 - Thiết bị offline phải được phát hiện (qua heartbeat timeout) và sinh cảnh báo `DEVICE_OFFLINE`.
 - Cảnh báo `LAMP_FAULT` được tạo khi điều kiện lỗi thỏa mãn: **[ĐÃ BỔ SUNG]** Khi mức PWM yêu cầu $\ge 30\%$ nhưng dòng điện tiêu thụ đo được từ INA219 thấp hơn ngưỡng $I < 0.05\text{A}$ ($50\text{mA}$) duy trì liên tục trong thời gian $T \ge 5\text{ giây}$.
   - *Lý do/Rationale:* Khi PWM ở mức thấp (0–20% theo bảng Adaptive Lighting khi không có người), dòng tải LED rất nhỏ dễ gây báo động giả (false positive); quy định chỉ kiểm tra lỗi khi $PWM \ge 30\%$ đảm bảo đèn đang trong trạng thái tải sáng rõ rệt. Khoảng thời gian $5\text{s}$ giúp lọc nhiễu và bỏ qua hiện tượng quá độ (transient/inrush) khi vừa bật hoặc chuyển mức độ sáng.
-- Chỉ Admin được: quản lý User, onboarding Device, quản lý vòng đời Device, cấu hình Adaptive Lighting.
-- Admin và Operator đều được: giám sát Device, xem Dashboard, xem lịch sử telemetry và cảnh báo, điều khiển đèn, xử lý cảnh báo.
-- Viewer chỉ được: đăng nhập/đăng xuất, đổi mật khẩu, giám sát Device, xem Dashboard, xem lịch sử telemetry và cảnh báo.
+- Chỉ Admin được: quản lý User, onboarding Device, quản lý vòng đời Device, cấu hình Adaptive Lighting, cấp/thu hồi quyền truy cập thiết bị.
+- Admin và Operator đều được: giám sát Device, xem Dashboard, xem lịch sử telemetry và cảnh báo, điều khiển đèn, xử lý cảnh báo (Operator: chỉ trên thiết bị được cấp quyền).
+- Viewer chỉ được: đăng nhập/đăng xuất, đổi mật khẩu, giám sát Device, xem Dashboard, xem lịch sử telemetry và cảnh báo (chỉ trên thiết bị được cấp quyền).
 - Chỉ Admin được xem Audit Log (`GET /audit-logs`).
 - Backend kiểm tra RBAC tại API, không chỉ ẩn nút trên giao diện.
+- **[ĐÃ BỔ SUNG]** Admin truy cập mọi thiết bị; Operator/Viewer chỉ truy cập thiết bị có bản ghi `DEVICE_ACCESS`. Truy cập thiết bị không được cấp trả `404` (không lộ sự tồn tại); endpoint danh sách chỉ trả thiết bị được phép.
+- **[ĐÃ BỔ SUNG]** `assigned_user_id` là người phụ trách thiết bị, không dùng để phân quyền.
+- **[ĐÃ BỔ SUNG]** Thiết bị `MAINTENANCE` (tạm khóa) và `DECOMMISSIONED` (thu hồi vĩnh viễn) không được kết nối MQTT và không sinh cảnh báo `DEVICE_OFFLINE`; thiết bị `PROVISIONED` được phép kết nối lần đầu.
+
+### Permission Matrix (vai trò × endpoint) [ĐÃ BỔ SUNG]
+
+Ký hiệu: ✓ = được; **S** = chỉ trên thiết bị được cấp quyền (`DEVICE_ACCESS`); ✗ = bị từ chối `403`.
+
+| Endpoint | Admin | Operator | Viewer |
+|---|---|---|---|
+| `POST /auth/login`, `POST /auth/refresh` | Public | Public | Public |
+| `POST /auth/logout`, `PUT /auth/password` | ✓ | ✓ | ✓ |
+| `GET /users`, `POST /users`, `PUT /users/:id`, `PATCH /users/:id/status` | ✓ | ✗ | ✗ |
+| `GET /devices`, `GET /devices/:id` | ✓ (tất cả) | S | S |
+| `POST /devices`, `PUT /devices/:id` | ✓ | ✗ | ✗ |
+| `PATCH /devices/:id/lifecycle` | ✓ | ✗ | ✗ |
+| `PATCH /devices/:id/config` | ✓ | ✗ | ✗ |
+| `GET /devices/:id/access`, `PUT /devices/:id/access` | ✓ | ✗ | ✗ |
+| `GET /devices/:id/telemetry`, `GET /devices/:id/telemetry/latest` | ✓ (tất cả) | S | S |
+| `POST /devices/:id/commands` | ✓ (tất cả) | S | ✗ |
+| `GET /alerts` | ✓ (tất cả) | S | S |
+| `PATCH /alerts/:id/acknowledge`, `PATCH /alerts/:id/resolve` | ✓ (tất cả) | S | ✗ |
+| `GET /dashboard/summary`, `GET /dashboard/devices` | ✓ (tất cả) | S | S |
+| `GET /audit-logs` | ✓ | ✗ | ✗ |
+| Socket.IO: `telemetry:update`, `device:status`, `command:update`, `alert:new` | ✓ (tất cả) | S | S |
+
+- Thứ tự kiểm tra: `401` (token) → `403` (role) → `404` (phạm vi thiết bị) → `400` (validate) → `409` (trạng thái). Chi tiết: `API_SPEC.md` mục "Quy ước chung về lỗi và phạm vi truy cập".
+- Mỗi ô ✗ và mỗi ô **S** cần ít nhất một test RBAC tương ứng.
 - Thiết bị bị khóa/revoke/decommission không được tiếp tục hoạt động hợp lệ trên hệ thống.
 
 ## 9. Non-functional Requirements
@@ -229,5 +267,9 @@ Phạm vi hiện tại **không bao gồm** (giữ nguyên theo báo cáo gốc 
 | TC08 | Khi dòng điện thấp bất thường lúc LED ON, hệ thống tạo cảnh báo Lamp Fault. |
 | TC09 | Viewer gọi API điều khiển (command) phải bị từ chối (unauthorized). |
 | TC10 | Decommission thiết bị thành công và thiết bị không còn hoạt động hợp lệ trên broker/backend. |
+| TC11 | Operator/Viewer gọi `GET /devices/:id` của thiết bị không được cấp quyền (ví dụ thiết bị mô phỏng `LIGHT-002`) nhận `404`; `GET /devices` không liệt kê thiết bị đó. |
+| TC12 | Gọi API với JWT không hợp lệ hoặc hết hạn nhận `401`. |
+| TC13 | Thiết bị chuyển `MAINTENANCE` bị broker từ chối kết nối/không gửi được dữ liệu và không sinh cảnh báo `DEVICE_OFFLINE`. |
+| TC14 | Thiết bị publish lên topic của thiết bị khác bị broker từ chối. |
 
 Số liệu định lượng cho các chỉ tiêu phi chức năng (độ trễ sensor→dashboard, độ trễ command→ACK, tỷ lệ mất bản tin, thời gian reconnect, ổn định liên tục): **TODO — chờ đo thực tế**, chưa có trong báo cáo gốc.

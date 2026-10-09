@@ -16,12 +16,13 @@
 
 ## 2. Entities
 
-Đúng 7 entity hiện tại (không tự thêm bảng):
+Đúng 8 entity hiện tại (không tự thêm bảng):
 
 ```text
 ROLE
-USER
+users
 DEVICE
+DEVICE_ACCESS
 TELEMETRY
 COMMAND
 ALERT
@@ -40,6 +41,9 @@ Với mỗi bảng dưới đây:
     - Dọn dẹp dữ liệu test/dev (nếu cần) không dựa vào cascade ngầm định, mà thực hiện bằng thao tác tường minh, đúng thứ tự: xóa các bản ghi `TELEMETRY` theo `device_id` trước, sau đó mới xóa/đổi trạng thái `DEVICE`. Việc này giữ cho thao tác dọn dữ liệu luôn có chủ đích và dễ audit lại.
     - *Lý do/Rationale:* Lịch sử telemetry, lệnh điều khiển và cảnh báo sự cố đều là dữ liệu phục vụ audit, điều tra nguyên nhân hỏng hóc và trách nhiệm vận hành, nên không được phép bị mất khi thiết bị ngừng hoạt động.
 
+- **Quy ước tên bảng trong migration: [ĐÃ BỔ SUNG]** dùng `snake_case` chữ thường, **không dùng dấu nháy kép**: `role`, `users`, `device`, `device_access`, `telemetry`, `command`, `alert`, `audit_log`. Bảng tài khoản đặt tên `users` (không phải `USER`) vì `USER` là từ khóa dành riêng của PostgreSQL. Các tên viết hoa trong tài liệu này (`ROLE`, `DEVICE`, `TELEMETRY`...) chỉ là tên thực thể; tên bảng thật theo quy ước trên.
+  - *Lý do/Rationale:* tránh phải dùng identifier có nháy kép ở mọi câu SQL/ORM và tránh lỗi cú pháp do từ khóa dành riêng.
+
 ## 4. ROLE
 
 - **Table name:** `ROLE`
@@ -54,13 +58,13 @@ Với mỗi bảng dưới đây:
 
 - **Primary key:** `role_id`
 - **Foreign keys:** không có
-- **Relationships:** `ROLE → USER` (1:N)
+- **Relationships:** `ROLE → users` (1:N)
 - **Constraints: [ĐÃ BỔ SUNG]** `UNIQUE(role_name)`, CHECK constraint đúng 3 vai trò: `ADMIN`, `OPERATOR`, `VIEWER`.
   - *Lý do/Rationale:* Cần thiết để khởi tạo seed dữ liệu ban đầu cho database và ràng buộc phân quyền RBAC ở tầng backend.
 
-## 5. USER
+## 5. users
 
-- **Table name:** `USER`
+- **Table name:** `users`
 - **Purpose:** Lưu thông tin tài khoản người dùng.
 - **Columns: [ĐÃ BỔ SUNG]**
 
@@ -77,7 +81,7 @@ Với mỗi bảng dưới đây:
 
 - **Primary key:** `user_id`
 - **Foreign keys:** `role_id` → `ROLE.role_id` (ON DELETE RESTRICT — không cho phép xóa role khi vẫn còn user gắn với role).
-- **Relationships:** `USER → DEVICE` (1:N, qua `assigned_user_id`), `USER → COMMAND` (1:N), `USER → ALERT` (1:N, qua `acknowledged_by`/`resolved_by`), `USER → AUDIT_LOG` (1:N)
+- **Relationships:** `users → DEVICE` (1:N, qua `assigned_user_id`), `users → COMMAND` (1:N), `users → ALERT` (1:N, qua `acknowledged_by`/`resolved_by`), `users → AUDIT_LOG` (1:N)
 - **Constraints: [ĐÃ BỔ SUNG]** `UNIQUE(username)`, `UNIQUE(email)`, CHECK constraint cho `status` (chỉ `ACTIVE`/`LOCKED`, khớp với `PATCH /users/:id/status` trong `API_SPEC.md`).
   - *Lý do/Rationale:* Cần thiết để lập trình tầng ORM/Repository và validate dữ liệu khi đăng ký/đăng nhập. Độ dài `password_hash` 255 ký tự đảm bảo lưu trọn vẹn chuỗi băm chuẩn bcrypt.
 
@@ -92,23 +96,47 @@ Với mỗi bảng dưới đây:
 | `device_id` | VARCHAR(50) | PRIMARY KEY | Khóa chính mã thiết bị (ví dụ: `LIGHT-001`) |
 | `device_name` | VARCHAR(100) | NOT NULL | Tên gợi nhớ của thiết bị |
 | `location` | VARCHAR(150) | NULL | Vị trí lắp đặt (ví dụ: Phòng khách) |
-| `assigned_user_id` | UUID | NULL, REFERENCES USER(user_id) ON DELETE SET NULL | Người phụ trách gán thiết bị |
+| `assigned_user_id` | UUID | NULL, REFERENCES users(user_id) ON DELETE SET NULL | Người phụ trách thiết bị (metadata nghiệp vụ/hiển thị). **Không quyết định quyền truy cập** — quyền truy cập do bảng `DEVICE_ACCESS` quyết định |
 | `device_status` | VARCHAR(20) | NOT NULL DEFAULT 'OFFLINE', CHECK (device_status IN ('ONLINE', 'OFFLINE', 'FAULT')) | Trạng thái kết nối/hoạt động |
 | `lifecycle_status` | VARCHAR(20) | NOT NULL DEFAULT 'REGISTERED', CHECK (lifecycle_status IN ('REGISTERED', 'PROVISIONED', 'ACTIVE', 'MAINTENANCE', 'DECOMMISSIONED')) | Trạng thái vòng đời thiết bị |
 | `firmware_version` | VARCHAR(30) | NOT NULL DEFAULT '1.0.0' | Phiên bản firmware hiện tại |
-| `credential_hash` | VARCHAR(255) | NOT NULL | Khóa nhận thực thiết bị (băm SHA256/bcrypt) |
+| `credential_hash` | VARCHAR(255) | NOT NULL | Khóa nhận thực thiết bị — **[ĐÃ BỔ SUNG]** băm bcryptjs (cost factor 10) của `device_key` được sinh khi onboarding (`POST /devices`). `device_key` plaintext chỉ trả về một lần duy nhất, không lưu trong DB. Cơ chế broker/backend dùng hash này để xác thực kết nối MQTT của ESP32 là `TODO/UNDEFINED` (xem `API_SPEC.md` mục A.3) |
 | `adaptive_config` | JSONB | NOT NULL DEFAULT '{"enabled": true, "motion_timeout_sec": 30, "lux_thresholds": [{"min_lux": 400, "pwm": 30}, {"min_lux": 200, "pwm": 50}, {"min_lux": 100, "pwm": 70}, {"min_lux": 0, "pwm": 100}], "no_motion_pwm": 10}'::jsonb | Cấu hình Adaptive Lighting |
 | `last_seen_at` | TIMESTAMPTZ | NULL | Thời điểm cuối cùng nhận tín hiệu |
 | `created_at` | TIMESTAMPTZ | NOT NULL DEFAULT CURRENT_TIMESTAMP | Thời điểm tạo |
 | `updated_at` | TIMESTAMPTZ | NOT NULL DEFAULT CURRENT_TIMESTAMP | Thời điểm cập nhật |
 
 - **Primary key:** `device_id`
-- **Foreign keys:** `assigned_user_id` → `USER.user_id` (ON DELETE SET NULL — khi tài khoản người dùng bị xóa, thiết bị vẫn giữ nguyên).
-- **Relationships:** `DEVICE → TELEMETRY` (1:N), `DEVICE → COMMAND` (1:N), `DEVICE → ALERT` (1:N), `DEVICE → AUDIT_LOG` (1:N)
+- **Foreign keys:** `assigned_user_id` → `users.user_id` (ON DELETE SET NULL — khi tài khoản người dùng bị xóa, thiết bị vẫn giữ nguyên).
+- **Relationships:** `DEVICE → TELEMETRY` (1:N), `DEVICE → COMMAND` (1:N), `DEVICE → ALERT` (1:N), `DEVICE → AUDIT_LOG` (1:N), `DEVICE → DEVICE_ACCESS` (1:N)
 - **Constraints: [ĐÃ BỔ SUNG]** CHECK constraint cho `device_status` ('ONLINE', 'OFFLINE', 'FAULT') và `lifecycle_status` ('REGISTERED', 'PROVISIONED', 'ACTIVE', 'MAINTENANCE', 'DECOMMISSIONED').
   - *Lý do/Rationale:* Cần thiết để code API Onboarding và Lifecycle state machine. `device_status` và `lifecycle_status` là 2 trạng thái độc lập phản ánh khía cạnh kỹ thuật thời gian thực và quản trị vòng đời thiết bị.
 
 > Ghi chú quan trọng: `device_status` (ONLINE/OFFLINE/FAULT) và `lifecycle_status` (REGISTERED/PROVISIONED/ACTIVE/MAINTENANCE/DECOMMISSIONED) là **hai trường độc lập**, không được gộp chung hay nhầm lẫn.
+
+## 6A. DEVICE_ACCESS
+
+- **Table name:** `device_access`
+- **Purpose:** Xác định user nào (Operator/Viewer) được truy cập thiết bị nào. Admin luôn truy cập mọi thiết bị, không cần bản ghi.
+- **Columns: [ĐÃ BỔ SUNG]**
+
+| Column | Data Type | Ràng buộc / Mặc định | Ghi chú |
+|---|---|---|---|
+| `user_id` | UUID | NOT NULL, REFERENCES users(user_id) ON DELETE CASCADE | User được cấp quyền |
+| `device_id` | VARCHAR(50) | NOT NULL, REFERENCES DEVICE(device_id) ON DELETE RESTRICT | Thiết bị được cấp |
+| `granted_by` | UUID | NULL, REFERENCES users(user_id) ON DELETE SET NULL | Admin đã cấp quyền |
+| `created_at` | TIMESTAMPTZ | NOT NULL DEFAULT CURRENT_TIMESTAMP | Thời điểm cấp |
+
+- **Primary key:** `(user_id, device_id)` (khóa chính kép).
+- **Foreign keys:** `user_id` → `users.user_id` (ON DELETE CASCADE); `device_id` → `DEVICE.device_id` (ON DELETE RESTRICT — nhất quán chính sách không hard-delete Device); `granted_by` → `users.user_id` (ON DELETE SET NULL).
+- **Relationships:** `users → DEVICE_ACCESS` (1:N), `DEVICE → DEVICE_ACCESS` (1:N); tổng hợp là quan hệ N:N giữa `users` và `DEVICE`.
+- **Constraints & Indexes: [ĐÃ BỔ SUNG]** `CREATE INDEX idx_device_access_device ON DEVICE_ACCESS (device_id);` (tên bảng thật: `device_access`).
+- **Quy tắc:**
+  - Bản ghi của user có role `ADMIN` bị bỏ qua khi kiểm tra quyền (Admin luôn thấy tất cả); API không cho tạo bản ghi cho Admin.
+  - Đổi role của user không tự xóa/tạo bản ghi: user từ Admin xuống Operator/Viewer sẽ không thấy thiết bị nào cho đến khi được cấp.
+  - Thiết bị `DECOMMISSIONED` vẫn giữ bản ghi (phục vụ truy xuất lịch sử).
+  - `assigned_user_id` của `DEVICE` **không** thay thế bảng này.
+  - *Lý do/Rationale:* `assigned_user_id` chỉ chứa một user nên không thể cấp một thiết bị cho nhiều user; cần bảng liên kết để đáp ứng yêu cầu người dùng chỉ truy cập thiết bị thuộc phạm vi được cấp quyền.
 
 ## 7. TELEMETRY
 
@@ -144,7 +172,7 @@ Với mỗi bảng dưới đây:
 |---|---|---|---|
 | `command_id` | UUID | PRIMARY KEY DEFAULT gen_random_uuid() | Khóa chính UUID |
 | `device_id` | VARCHAR(50) | NOT NULL, REFERENCES DEVICE(device_id) ON DELETE RESTRICT | Thiết bị nhận lệnh |
-| `user_id` | UUID | NULL, REFERENCES USER(user_id) ON DELETE SET NULL | Người gửi lệnh |
+| `user_id` | UUID | NULL, REFERENCES users(user_id) ON DELETE SET NULL | Người gửi lệnh |
 | `command_type` | VARCHAR(20) | NOT NULL, CHECK (command_type IN ('PWM', 'ON', 'OFF')) | Loại lệnh |
 | `command_value` | SMALLINT | NULL, CHECK (command_value BETWEEN 0 AND 100) | Giá trị PWM theo phần trăm (số nguyên 0–100); bắt buộc khi `command_type = 'PWM'`, phải NULL khi `ON`/`OFF` (xem constraint liên trường bên dưới) |
 | `status` | VARCHAR(25) | NOT NULL DEFAULT 'PENDING', CHECK (status IN ('PENDING', 'SENT', 'ACKNOWLEDGED', 'TIMEOUT', 'FAILED')) | Trạng thái lệnh (luồng chuyển trạng thái: xem `API_SPEC.md` mục B.6) |
@@ -153,8 +181,8 @@ Với mỗi bảng dưới đây:
 | `result` | VARCHAR(50) | NULL | Kết quả thực thi (giá trị `result` trong ACK, ví dụ `PWM_SET`, `COMMAND_EXPIRED`) |
 
 - **Primary key:** `command_id`
-- **Foreign keys:** `device_id` → `DEVICE.device_id` (**ON DELETE RESTRICT** — ngăn chặn việc xóa cứng thiết bị khi đã có lệnh điều khiển trong quá khứ); `user_id` → `USER.user_id` (ON DELETE SET NULL).
-- **Relationships:** thuộc về 1 `DEVICE` và 1 `USER`
+- **Foreign keys:** `device_id` → `DEVICE.device_id` (**ON DELETE RESTRICT** — ngăn chặn việc xóa cứng thiết bị khi đã có lệnh điều khiển trong quá khứ); `user_id` → `users.user_id` (ON DELETE SET NULL).
+- **Relationships:** thuộc về 1 `DEVICE` và 1 `users`
 - **Constraints & Indexes: [ĐÃ BỔ SUNG]** CHECK ràng buộc `command_type` ('PWM', 'ON', 'OFF'), `status` ('PENDING', 'SENT', 'ACKNOWLEDGED', 'TIMEOUT', 'FAILED'). Index: `CREATE INDEX idx_command_device ON COMMAND (device_id, sent_at DESC);`.
   - **CHECK liên trường** giữa `command_type` và `command_value`:
     ```sql
@@ -184,12 +212,12 @@ Với mỗi bảng dưới đây:
 | `created_at` | TIMESTAMPTZ | NOT NULL DEFAULT CURRENT_TIMESTAMP | Thời điểm tạo cảnh báo |
 | `acknowledged_at` | TIMESTAMPTZ | NULL | Thời điểm xác nhận |
 | `resolved_at` | TIMESTAMPTZ | NULL | Thời điểm giải quyết |
-| `acknowledged_by` | UUID | NULL, REFERENCES USER(user_id) ON DELETE SET NULL | Người xác nhận |
-| `resolved_by` | UUID | NULL, REFERENCES USER(user_id) ON DELETE SET NULL | Người giải quyết |
+| `acknowledged_by` | UUID | NULL, REFERENCES users(user_id) ON DELETE SET NULL | Người xác nhận |
+| `resolved_by` | UUID | NULL, REFERENCES users(user_id) ON DELETE SET NULL | Người giải quyết |
 
 - **Primary key:** `alert_id`
-- **Foreign keys:** `device_id` → `DEVICE.device_id` (**ON DELETE RESTRICT** — ngăn xóa cứng thiết bị khi còn cảnh báo); `acknowledged_by` → `USER.user_id` (ON DELETE SET NULL); `resolved_by` → `USER.user_id` (ON DELETE SET NULL).
-- **Relationships:** thuộc về 1 `DEVICE`; liên kết tới `USER` qua `acknowledged_by`/`resolved_by` (1:N mỗi chiều)
+- **Foreign keys:** `device_id` → `DEVICE.device_id` (**ON DELETE RESTRICT** — ngăn xóa cứng thiết bị khi còn cảnh báo); `acknowledged_by` → `users.user_id` (ON DELETE SET NULL); `resolved_by` → `users.user_id` (ON DELETE SET NULL).
+- **Relationships:** thuộc về 1 `DEVICE`; liên kết tới `users` qua `acknowledged_by`/`resolved_by` (1:N mỗi chiều)
 - **Constraints & Indexes: [ĐÃ BỔ SUNG]** CHECK ràng buộc `alert_type`, `severity`, `status`. Index: `CREATE INDEX idx_alert_status ON ALERT (status);`.
   - *Lý do/Rationale:* Ràng buộc `ON DELETE RESTRICT` giữ lại toàn vẹn hồ sơ cảnh báo sự cố kỹ thuật; Index theo `status` giúp tối ưu truy vấn danh sách cảnh báo chưa xử lý trên Dashboard.
 
@@ -202,7 +230,7 @@ Với mỗi bảng dưới đây:
 | Column | Data Type | Ràng buộc / Mặc định | Ghi chú |
 |---|---|---|---|
 | `log_id` | BIGSERIAL | PRIMARY KEY | Khóa chính tăng tự động |
-| `user_id` | UUID | NULL, REFERENCES USER(user_id) ON DELETE SET NULL | Người thực hiện hành động |
+| `user_id` | UUID | NULL, REFERENCES users(user_id) ON DELETE SET NULL | Người thực hiện hành động |
 | `device_id` | VARCHAR(50) | NULL, REFERENCES DEVICE(device_id) ON DELETE SET NULL | Thiết bị liên quan (nếu có) |
 | `action` | VARCHAR(50) | NOT NULL | Mã hành động |
 | `description` | TEXT | NULL | Mô tả chi tiết hành động |
@@ -210,45 +238,63 @@ Với mỗi bảng dưới đây:
 | `created_at` | TIMESTAMPTZ | NOT NULL DEFAULT CURRENT_TIMESTAMP | Thời điểm ghi log |
 
 - **Primary key:** `log_id`
-- **Foreign keys:** `user_id` → `USER.user_id` (ON DELETE SET NULL); `device_id` → `DEVICE.device_id` (ON DELETE SET NULL).
-- **Relationships:** thuộc về 1 `USER` và (tùy chọn) 1 `DEVICE`
+- **Foreign keys:** `user_id` → `users.user_id` (ON DELETE SET NULL); `device_id` → `DEVICE.device_id` (ON DELETE SET NULL).
+- **Relationships:** thuộc về 1 `users` và (tùy chọn) 1 `DEVICE`
 - **Constraints & Indexes: [ĐÃ BỔ SUNG]** `device_id` và `user_id` là optional (cho phép NULL để phục vụ thao tác hệ thống hoặc khi user/device bị xoá nhưng audit log vẫn được bảo lưu). Index: `CREATE INDEX idx_audit_created_at ON AUDIT_LOG (created_at DESC);`.
   - *Lý do/Rationale:* Thiết kế khóa ngoại `ON DELETE SET NULL` là nguyên tắc bắt buộc cho bảng Audit để không bao giờ bị mất dấu vết thao tác lịch sử.
+
+- **Giá trị `action` hợp lệ: [ĐÃ BỔ SUNG]** kiểm tra ở tầng ứng dụng (ví dụ TypeScript union/const), **không** tạo PostgreSQL ENUM:
+
+| Nhóm | action |
+|---|---|
+| Auth | `LOGIN`, `LOGIN_FAILED`, `LOGOUT`, `CHANGE_PASSWORD` |
+| User | `CREATE_USER`, `UPDATE_USER`, `LOCK_USER`, `UNLOCK_USER` |
+| Device | `CREATE_DEVICE`, `UPDATE_DEVICE`, `CHANGE_DEVICE_LIFECYCLE`, `UPDATE_DEVICE_ACCESS`, `UPDATE_ADAPTIVE_CONFIG` |
+| Command | `SEND_COMMAND` |
+| Alert | `ACK_ALERT`, `RESOLVE_ALERT` |
+
+  - `PATCH /users/:id/status` ghi `LOCK_USER` khi `status = LOCKED` và `UNLOCK_USER` khi `status = ACTIVE`.
+  - `description` **không được chứa** mật khẩu, token hay `device_key`.
+  - Thêm action mới phải cập nhật bảng này.
 
 ## 11. Relationships (tổng hợp)
 
 | Quan hệ | Cardinality |
 |---|---|
-| ROLE → USER | 1:N |
-| USER → DEVICE | 1:N (qua `assigned_user_id`) |
+| ROLE → users | 1:N |
+| users → DEVICE | 1:N (qua `assigned_user_id`) |
 | DEVICE → TELEMETRY | 1:N |
 | DEVICE → COMMAND | 1:N |
-| USER → COMMAND | 1:N |
+| users → COMMAND | 1:N |
 | DEVICE → ALERT | 1:N |
-| USER → ALERT | 1:N (qua `acknowledged_by` / `resolved_by`) |
-| USER → AUDIT_LOG | 1:N |
+| users → ALERT | 1:N (qua `acknowledged_by` / `resolved_by`) |
+| users → AUDIT_LOG | 1:N |
 | DEVICE → AUDIT_LOG | 1:N |
+| users → DEVICE_ACCESS | 1:N |
+| DEVICE → DEVICE_ACCESS | 1:N |
 
 ## 12. ERD
 
 ```mermaid
 erDiagram
-    ROLE ||--o{ USER : has
-    USER ||--o{ DEVICE : "assigned_user_id"
+    ROLE ||--o{ users : has
+    users ||--o{ DEVICE : "assigned_user_id"
     DEVICE ||--o{ TELEMETRY : generates
     DEVICE ||--o{ COMMAND : receives
-    USER ||--o{ COMMAND : sends
+    users ||--o{ COMMAND : sends
     DEVICE ||--o{ ALERT : triggers
-    USER ||--o{ ALERT : "acknowledged_by / resolved_by"
-    USER ||--o{ AUDIT_LOG : performs
+    users ||--o{ ALERT : "acknowledged_by / resolved_by"
+    users ||--o{ AUDIT_LOG : performs
     DEVICE ||--o{ AUDIT_LOG : "related to"
+    users ||--o{ DEVICE_ACCESS : "granted access"
+    DEVICE ||--o{ DEVICE_ACCESS : "accessible by"
 
     ROLE {
         pk role_id
         role_name
         description
     }
-    USER {
+    users {
         pk user_id
         username
         email
@@ -316,6 +362,12 @@ erDiagram
         ip_address
         created_at
     }
+    DEVICE_ACCESS {
+        pk_fk user_id
+        pk_fk device_id
+        fk granted_by
+        created_at
+    }
 ```
 
-> **[ĐÃ BỔ SUNG]** Toàn bộ data type SQL cụ thể, thang đo PWM ($0 - 100\%$), index hiệu năng, cascade behavior (`ON DELETE RESTRICT` cho cả `TELEMETRY`/`COMMAND`/`ALERT` để bảo vệ dữ liệu audit — nhất quán một chính sách duy nhất, `ON DELETE SET NULL` cho User, soft-delete qua `DECOMMISSIONED` cho Device) và các ràng buộc (CHECK, NOT NULL, UNIQUE) của 7 bảng đã được chuẩn hóa chi tiết ở trên để sẵn sàng viết file migration cho PostgreSQL 18. Không tự ý thêm bất kỳ bảng nào ngoài 7 entity này.
+> **[ĐÃ BỔ SUNG]** Toàn bộ data type SQL cụ thể, thang đo PWM ($0 - 100\%$), index hiệu năng, cascade behavior (`ON DELETE RESTRICT` cho cả `TELEMETRY`/`COMMAND`/`ALERT` để bảo vệ dữ liệu audit — nhất quán một chính sách duy nhất, `ON DELETE SET NULL` cho User, soft-delete qua `DECOMMISSIONED` cho Device) và các ràng buộc (CHECK, NOT NULL, UNIQUE) của 8 bảng đã được chuẩn hóa chi tiết ở trên để sẵn sàng viết file migration cho PostgreSQL 18. Không tự ý thêm bất kỳ bảng nào ngoài 8 entity này.

@@ -15,12 +15,13 @@
 - Sử dụng **TypeScript** và **Express** đúng theo stack đã chọn (xem `ARCHITECTURE.md`).
 - API structure phải tuân thủ đúng danh sách endpoint trong `API_SPEC.md`; không tự thêm/xóa endpoint.
 - Validation: input phải được kiểm tra và làm sạch trước khi xử lý (theo yêu cầu bảo mật trong báo cáo gốc, mục 3.6.1).
-- Error handling: cần có xử lý lỗi rõ ràng cho các API; format lỗi cụ thể — báo cáo chưa xác định → agent đề xuất và ghi rõ trong code/PR, không tự coi là chuẩn chính thức.
+- Error handling: cần có xử lý lỗi rõ ràng cho các API; dùng đúng format lỗi chuẩn `{code, message, details}` trong `API_SPEC.md` mục "Quy ước chung về lỗi và phạm vi truy cập". Không tự đổi format.
 - Authentication: dùng JWT để xác thực API.
 - Authorization: RBAC phải được kiểm tra **tại backend/API**, không chỉ ẩn phần tử trên giao diện.
+- Authorization theo thiết bị: mọi truy vấn/endpoint liên quan thiết bị phải lọc theo `DEVICE_ACCESS` với Operator/Viewer (Admin: tất cả); không đủ quyền trả `404`. Thứ tự kiểm tra: 401 → 403 → 404 → 400 → 409.
 - MQTT integration: dùng MQTT.js để giao tiếp với Mosquitto; topic và payload phải đúng theo `API_SPEC.md` Phần B.
 - Database access: chỉ Backend được truy cập PostgreSQL trực tiếp; không cho phép Frontend hoặc thành phần khác truy cập DB.
-- Logging: audit log cho các thao tác quan trọng phải được ghi vào bảng `AUDIT_LOG` (xem `DATABASE.md`).
+- Logging: audit log cho các thao tác quan trọng phải được ghi vào bảng `AUDIT_LOG` (xem `DATABASE.md`), dùng đúng danh sách `action` trong `DATABASE.md` mục 10; không ghi mật khẩu, token hay `device_key` vào `description`.
 
 ## 3. Frontend Rules
 
@@ -46,7 +47,7 @@
 ## 5. Database Rules
 
 - Không tự ý đổi schema (tên bảng, tên cột) đã liệt kê trong `DATABASE.md`.
-- Không tạo bảng mới nếu không thực sự cần thiết và chưa được xác nhận — hiện tại chỉ có đúng 7 entity.
+- Không tạo bảng mới nếu không thực sự cần thiết và chưa được xác nhận — hiện tại chỉ có đúng 8 entity.
 - Migration phải có kiểm soát (versioned migration, không sửa trực tiếp schema production).
 - Không hard-code credentials trong code hoặc migration.
 - Không commit secret (connection string, password) vào Git.
@@ -69,7 +70,7 @@
 
 - Password hashing: dùng **bcryptjs**, không lưu plaintext.
 - JWT: dùng để xác thực API.
-- RBAC: kiểm tra quyền tại backend cho mọi API, theo ma trận quyền trong `PRD.md`.
+- RBAC: kiểm tra quyền tại backend cho mọi API, theo ma trận quyền trong `PRD.md` (gồm phạm vi truy cập theo thiết bị).
 - Input validation: dữ liệu đầu vào phải được kiểm tra và làm sạch.
 - Device credentials: mỗi thiết bị có `device_id` và `credential_hash` riêng, không dùng chung credential.
 - Environment variables: secret/credential lưu qua biến môi trường hoặc cơ chế cấu hình an toàn.
@@ -87,8 +88,40 @@
 - Không commit secret dưới bất kỳ hình thức nào.
 - Commit phải tập trung vào một thay đổi rõ ràng (tránh commit gộp nhiều việc không liên quan).
 - Không sửa lịch sử Git (force push, rebase lịch sử đã chia sẻ...) nếu không được yêu cầu rõ ràng.
-- Quy ước đặt tên commit message: **[ĐÃ BỔ SUNG]** Tuân thủ chuẩn Conventional Commits: `<type>(<scope>): <mô tả ngắn>` (Ví dụ: `feat(backend): add telemetry ingestion handler`, `fix(firmware): fix reconnection logic`, `docs(api): update MQTT payload spec`). Các type hợp lệ: `feat`, `fix`, `docs`, `refactor`, `test`, `chore`.
+- Quy ước đặt tên commit message: **[ĐÃ BỔ SUNG]** Định dạng commit message: `<type>: <mô tả ngắn>` (không dùng scope). Ví dụ: `feat: add telemetry ingestion handler`, `fix: fix reconnection logic`, `docs: update MQTT payload spec`. Các type hợp lệ: `feat`, `fix`, `docs`, `refactor`, `test`, `chore`.
   - *Lý do/Rationale:* Cần thống nhất quy ước commit ngay từ đầu để giữ lịch sử Git rõ ràng và hỗ trợ sinh changelog tự động.
+
+### Agent tự động commit (không push) [ĐÃ BỔ SUNG]
+
+AI coding agent **được phép và nên tự commit local** sau khi hoàn thành một thay đổi; agent **không được push**.
+
+**Khi nào commit:**
+- Sau khi hoàn thành một thay đổi có ý nghĩa trọn vẹn **và** đã kiểm tra phần bị ảnh hưởng (xem mục 10). Không commit code chưa chạy, build/test đang lỗi, hoặc đang làm dở.
+- Mỗi commit là **một thay đổi logic duy nhất**. Task gồm nhiều việc không liên quan thì tách thành nhiều commit.
+- Thay đổi code và cập nhật tài liệu tương ứng (mục 11) nằm **cùng một commit**.
+- Cập nhật `PLAN.md` chỉ khi có bằng chứng cụ thể (xem `AGENTS.md` mục 4); nếu cập nhật riêng thì dùng commit `docs: ...` riêng (ví dụ `docs: update PLAN progress for phase 1`), kèm bằng chứng trong nhật ký.
+
+**Trước khi commit, agent phải:**
+1. Chạy `git status` và `git diff` để xem chính xác những gì sẽ được commit.
+2. Chỉ `git add` **các file cụ thể** thuộc thay đổi hiện tại; không dùng `git add -A` / `git add .` một cách mù quáng.
+3. Kiểm tra không có secret hoặc file không được commit: `.env`, `device_key`, mật khẩu, JWT secret, credential, `node_modules`, thư mục build, file log.
+4. Nếu thấy secret đã nằm trong diff: **dừng**, không commit, báo cho người dùng.
+
+**Cách commit:**
+- Message theo đúng định dạng ở trên: `<type>: <mô tả ngắn>` (không có scope). Mô tả ngắn gọn, nêu rõ thay đổi gì; phần thân (nếu cần) ghi thêm thành phần bị ảnh hưởng.
+- Dòng đầu ngắn gọn; phần thân (nếu cần) nêu lý do thay đổi và cách đã kiểm tra. Không ghi "test passed" nếu chưa thực sự chạy (xem mục 10).
+- Commit trên **nhánh hiện tại**. Không tự tạo, chuyển, merge hoặc xóa nhánh nếu không được yêu cầu.
+
+**Agent KHÔNG được làm:**
+- `git push` (kể cả `--force`), `git push --tags`, hoặc bất kỳ thao tác nào ghi lên remote.
+- Tạo/đẩy tag hoặc release (ví dụ `v1.0.0`) — việc này do nhóm quyết định.
+- Sửa lịch sử: `git commit --amend` lên commit đã có từ trước, `git rebase`, `git reset --hard`, `git filter-branch`, và tương tự.
+- Bỏ qua hook hoặc kiểm tra: `--no-verify`, `--no-gpg-sign`.
+- Thay đổi cấu hình Git (`git config`), remote, hoặc `.gitignore` để vượt qua kiểm tra.
+
+**Sau khi commit:** agent báo lại cho người dùng hash ngắn, message, danh sách file đã thay đổi, và nhắc rằng commit **chưa được push**. Người dùng tự xem lại (`git log`, `git show`) rồi tự push.
+
+*Lý do/Rationale:* commit local thường xuyên giúp mỗi thay đổi nhỏ, dễ xem lại và dễ hoàn tác; việc push, tag và release là điểm kiểm soát cuối cùng thuộc về người trong nhóm, đặc biệt vì đồ án cần lịch sử commit rõ ràng của từng thành viên.
 
 ## 10. Testing Rules
 

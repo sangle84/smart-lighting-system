@@ -4,9 +4,53 @@
 
 ---
 
+## Quy ước chung về lỗi và phạm vi truy cập [ĐÃ BỔ SUNG]
+
+### Format lỗi REST
+
+Mọi response lỗi (4xx/5xx) dùng cùng một cấu trúc:
+
+```json
+{
+  "code": "DEVICE_NOT_FOUND",
+  "message": "Không tìm thấy thiết bị",
+  "details": null
+}
+```
+
+- `code`: mã lỗi ổn định, chữ hoa, tiếng Anh (client dựa vào `code`, không dựa vào `message`).
+- `message`: mô tả cho người dùng, tiếng Việt.
+- `details`: `null` hoặc đối tượng/mảng bổ sung (ví dụ danh sách field lỗi khi `VALIDATION_ERROR`).
+
+| HTTP | `code` | Dùng khi |
+|---|---|---|
+| 400 | `VALIDATION_ERROR` | Payload/query sai định dạng hoặc giá trị |
+| 400 | `INVALID_LIFECYCLE_TRANSITION` | Chuyển vòng đời không hợp lệ |
+| 401 | `UNAUTHORIZED` | Thiếu/sai/hết hạn token |
+| 401 | `INVALID_CREDENTIALS` | Sai username/mật khẩu |
+| 403 | `FORBIDDEN` | Không đủ quyền theo role |
+| 403 | `ACCOUNT_LOCKED` | Tài khoản bị khóa |
+| 404 | `NOT_FOUND` hoặc `<RESOURCE>_NOT_FOUND` (ví dụ `DEVICE_NOT_FOUND`) | Không tồn tại **hoặc** không có quyền truy cập thiết bị |
+| 409 | `CONFLICT` hoặc mã cụ thể (`USERNAME_EXISTS`, `DEVICE_EXISTS`, `DEVICE_NOT_AVAILABLE`) | Xung đột trạng thái/dữ liệu |
+| 500 | `INTERNAL_ERROR` | Lỗi không xác định (không lộ stack trace) |
+
+Các mục "Error cases" bên dưới chỉ ghi mã HTTP; `code` cụ thể theo bảng này.
+
+### Phạm vi truy cập thiết bị (device scope)
+
+- **Admin:** truy cập mọi thiết bị.
+- **Operator/Viewer:** chỉ truy cập thiết bị có bản ghi trong `DEVICE_ACCESS` (xem `DATABASE.md` mục 6A).
+- Áp dụng cho mọi endpoint liên quan thiết bị và dữ liệu của thiết bị: `/devices/*`, `/alerts/*`, `/dashboard/*` và event Socket.IO.
+- Endpoint theo một thiết bị cụ thể (`/devices/:id/...`, `/alerts/:id/...`): không có quyền → `404` (không lộ việc thiết bị có tồn tại).
+- Endpoint danh sách (`GET /devices`, `GET /alerts`, `/dashboard/*`): chỉ trả/tính các thiết bị được phép; `GET /alerts?device_id=` với thiết bị không có quyền trả danh sách rỗng.
+- **Thứ tự kiểm tra:** xác thực token (`401`) → role (`403`) → phạm vi thiết bị (`404`) → validate dữ liệu (`400`) → trạng thái (`409`). Ví dụ: Viewer gọi `POST /devices/:id/commands` luôn nhận `403`, kể cả thiết bị không thuộc phạm vi của họ.
+- *Lý do/Rationale:* đáp ứng yêu cầu người dùng chỉ truy cập thiết bị và dữ liệu thuộc phạm vi được cấp quyền; thứ tự kiểm tra cố định để test RBAC cho kết quả ổn định.
+
+---
+
 ## Phần A — REST API
 
-Quy ước chung: "Quyền" (Authorization) lấy theo bảng mục 3.3.3 của báo cáo gốc. "All" nghĩa là mọi user đã đăng nhập (Admin/Operator/Viewer) đều được gọi.
+Quy ước chung: "Quyền" (Authorization) lấy theo bảng mục 3.3.3 của báo cáo gốc. "All" nghĩa là mọi user đã đăng nhập (Admin/Operator/Viewer) đều được gọi. **[ĐÃ BỔ SUNG]** Với endpoint liên quan thiết bị, Operator/Viewer chỉ truy cập thiết bị được cấp quyền (xem "Quy ước chung về lỗi và phạm vi truy cập" ở trên); các `404` ở mục "Error cases" bao gồm cả trường hợp không có quyền truy cập thiết bị.
 
 ### A.1 Authentication
 
@@ -251,6 +295,11 @@ Quy ước chung: "Quyền" (Authorization) lấy theo bảng mục 3.3.3 của 
   - `409 Conflict`: `device_id` đã tồn tại trong hệ thống.
 - *Lý do/Rationale:* Cần thiết để tạo bản ghi thiết bị và sinh khóa bảo mật `device_key` cấp phát cho firmware ESP32.
 
+> **Quan hệ `device_key` ↔ `credential_hash` [ĐÃ BỔ SUNG]:**
+> - `device_key` trả về trong response trên là **secret dạng plaintext, chỉ hiển thị một lần duy nhất** tại thời điểm onboarding, dùng để cấu hình MQTT credential khi nạp firmware ESP32. Không có endpoint nào cho phép xem lại `device_key` sau này.
+> - Backend băm `device_key` bằng **bcryptjs** (cost factor = 10, xem `PROJECT-RULES.md` mục 8) và lưu kết quả vào `DEVICE.credential_hash`. Không bao giờ lưu `device_key` dạng plaintext trong DB.
+> - **Xác thực MQTT:** `device_key` là credential ESP32 dùng để kết nối MQTT (kèm `device_id`). Cơ chế broker/backend xác thực credential này khớp với `credential_hash` đã lưu là **TODO/UNDEFINED** — chưa quyết định chi tiết (ví dụ: auth plugin cho Mosquitto, hoặc lớp xác thực trung gian). Không giả định Mosquitto tự động so khớp bcrypt hash, vì đây không phải hành vi mặc định của broker.
+
 #### `GET /devices/:id`
 - **Authentication:** Authenticated
 - **Authorization:** All
@@ -330,6 +379,7 @@ Quy ước chung: "Quyền" (Authorization) lấy theo bảng mục 3.3.3 của 
   - `400 Bad Request`: Chuyển đổi trạng thái không hợp lệ (ví dụ: chuyển ngược từ `DECOMMISSIONED`).
   - `404 Not Found`: Không tìm thấy thiết bị.
 - *Lý do/Rationale:* Cần thiết để lập trình logic state machine chuyển đổi vòng đời thiết bị.
+- **Hành vi MQTT: [ĐÃ BỔ SUNG]** quyền kết nối MQTT phụ thuộc `lifecycle_status` (xem B.7). Khi chuyển sang `MAINTENANCE` hoặc `DECOMMISSIONED`, backend phải ngắt kết nối hiện tại của thiết bị (cơ chế cụ thể: **TODO/UNDEFINED**, xem B.7); thiết bị đã `DECOMMISSIONED` không thể chuyển lại.
 
 #### `PATCH /devices/:id/config`
 - **Authentication:** Authenticated
@@ -373,6 +423,43 @@ Quy ước chung: "Quyền" (Authorization) lấy theo bảng mục 3.3.3 của 
   - `400 Bad Request`: Payload sai định dạng hoặc giá trị PWM ngoài dải 0–100%.
   - `404 Not Found`: Không tìm thấy thiết bị.
 - *Lý do/Rationale:* Cần thiết để Admin điều chỉnh các ngưỡng ánh sáng tự động từ giao diện Web và đồng bộ xuống ESP32.
+
+#### `GET /devices/:id/access`
+- **Authentication:** Authenticated
+- **Authorization:** Admin
+- **Purpose:** Xem danh sách user (Operator/Viewer) được cấp quyền truy cập thiết bị
+- **Request: [ĐÃ BỔ SUNG]** None
+- **Response: [ĐÃ BỔ SUNG]** `200 OK`
+  ```json
+  {
+    "device_id": "LIGHT-001",
+    "users": [
+      {
+        "user_id": "e4f8910a-6e54-4601-8fb7-bf532670e5b9",
+        "username": "operator01",
+        "role_name": "OPERATOR"
+      }
+    ]
+  }
+  ```
+- **Error cases: [ĐÃ BỔ SUNG]** `401 Unauthorized`, `403 Forbidden` (không phải Admin), `404 Not Found` (thiết bị không tồn tại).
+
+#### `PUT /devices/:id/access`
+- **Authentication:** Authenticated
+- **Authorization:** Admin
+- **Purpose:** Đặt lại toàn bộ danh sách user (Operator/Viewer) được truy cập thiết bị
+- **Request: [ĐÃ BỔ SUNG]**
+  ```json
+  {
+    "user_ids": ["e4f8910a-6e54-4601-8fb7-bf532670e5b9"]
+  }
+  ```
+- **Response: [ĐÃ BỔ SUNG]** `200 OK` (cùng dạng response của `GET /devices/:id/access`)
+- **Error cases: [ĐÃ BỔ SUNG]**
+  - `400 Bad Request`: `user_ids` sai định dạng, user không tồn tại, hoặc là Admin (Admin luôn có quyền, không cần cấp).
+  - `404 Not Found`: Thiết bị không tồn tại.
+- **Hành vi: [ĐÃ BỔ SUNG]** thay thế toàn bộ tập bản ghi `DEVICE_ACCESS` của thiết bị; ghi audit `UPDATE_DEVICE_ACCESS`; cập nhật room Socket.IO của các user bị ảnh hưởng (xem Phần C.2).
+- *Lý do/Rationale:* Cần thiết để Admin cấp/thu hồi phạm vi truy cập; dùng PUT thay thế toàn bộ để tránh trạng thái cộng dồn khó kiểm soát.
 
 ### A.4 Telemetry
 
@@ -453,7 +540,7 @@ Quy ước chung: "Quyền" (Authorization) lấy theo bảng mục 3.3.3 của 
   - `400 Bad Request`: `command_type` không hợp lệ (chỉ nhận `PWM`, `ON`, `OFF`); `command_value` không phải số nguyên trong dải 0–100; thiếu `command_value` khi `PWM`; hoặc có `command_value` khi `ON`/`OFF`.
   - `403 Forbidden`: Người dùng vai trò `Viewer` gọi endpoint này bị từ chối (theo TC09).
   - `404 Not Found`: Không tìm thấy thiết bị.
-  - `409 Conflict`: Thiết bị đang `OFFLINE` hoặc `MAINTENANCE`.
+  - `409 Conflict` (`DEVICE_NOT_AVAILABLE`): Thiết bị đang `OFFLINE` hoặc `lifecycle_status` khác `ACTIVE` (`REGISTERED`, `PROVISIONED`, `MAINTENANCE`, `DECOMMISSIONED`).
 - *Lý do/Rationale:* Cần thiết để lập trình bảng điều khiển slider PWM và công tắc bật/tắt đèn trên Web UI. Mã HTTP `202 Accepted` phản ánh đúng tính chất bất đồng bộ của lệnh MQTT IoT: kết quả cuối (`ACKNOWLEDGED`/`FAILED`/`TIMEOUT`) được cập nhật sau vào `COMMAND.status` theo `B.6`. Hiện chưa có endpoint REST để tra cứu trạng thái/lịch sử lệnh: **TODO/UNDEFINED** (không tự thêm khi chưa được xác nhận).
 
 ### A.6 Alerts
@@ -822,3 +909,64 @@ Toàn bộ thông số vận hành giao thức MQTT giữa Backend và ESP32 đ�
   - **Thứ tự xử lý lệnh trên ESP32:** dedup → kiểm tra hợp lệ → kiểm tra hết hạn → thực thi → cập nhật PWM → bật `manual_override` → gửi ACK (chi tiết: `ARCHITECTURE.md` mục 7.2).
   - *Lý do/Rationale:* QoS 1 đảm bảo "at-least-once" nên có thể gây trùng bản tin khi mạng chập chờn; dedup đứng đầu và phát lại ACK cũ để bản trùng đến muộn không bị từ chối nhầm là `COMMAND_EXPIRED`, đảm bảo tính idempotent của lệnh điều khiển.
 - **Lưu ý chung:** các con số ở mục B.6 (5s, 1s/2s, 30s, 50 `command_id`/60s...) là **giá trị đề xuất ban đầu để bắt đầu code**, cần hiệu chỉnh sau khi đo thực tế, không phải số liệu đã kiểm chứng.
+
+### B.7 Xác thực và phân quyền MQTT (device auth + ACL): [ĐÃ BỔ SUNG]
+
+**Nguyên tắc (contract):**
+
+```text
+ESP32: device_id + device_key
+        ↓
+Broker authentication (xác thực dựa trên DB)
+        ↓
+So khớp với DEVICE.credential_hash (bcrypt)
+        ↓
+ACL theo device_id
+        ↓
+chỉ được truy cập iot/device/{own_device_id}/...
+```
+
+- **ACL thiết bị:** publish `telemetry`, `status`, `ack`; subscribe `command`, `config` — chỉ trên topic có `{device_id}` của chính mình. Publish/subscribe topic khác bị broker từ chối. Mỗi thiết bị có credential riêng, không dùng chung.
+- **Tài khoản backend:** credential MQTT riêng của Backend (lưu qua biến môi trường), được subscribe `iot/device/+/telemetry|status|ack` và publish `iot/device/+/command|config`. Không dùng chung với thiết bị.
+- **Quyền kết nối theo `lifecycle_status`:**
+
+| lifecycle_status | MQTT connect / ACL |
+|---|---|
+| REGISTERED | Từ chối |
+| PROVISIONED | **Cho phép** (để thiết bị kết nối lần đầu và chuyển sang ACTIVE) |
+| ACTIVE | Cho phép |
+| MAINTENANCE | Từ chối (tạm khóa) |
+| DECOMMISSIONED | Từ chối vĩnh viễn |
+
+- `credential_hash` **không bị xóa** khi thiết bị bị từ chối; broker từ chối dựa trên `lifecycle_status`. Lịch sử dữ liệu giữ nguyên.
+- **TODO/UNDEFINED:** (1) plugin/cơ chế cụ thể cho Mosquitto, kèm kiểm chứng tương thích định dạng hash của `bcryptjs`; (2) cơ chế ngắt thiết bị **đang kết nối** khi chuyển sang `MAINTENANCE`/`DECOMMISSIONED` (cache ACL với TTL ngắn, hoặc backend chủ động ngắt client). Không tự chọn khi implement — chốt rồi cập nhật mục này.
+- *Lý do/Rationale:* Mosquitto không tự so khớp bcrypt hash trong PostgreSQL nên cần cơ chế bổ sung. `PROVISIONED` phải được phép kết nối vì `PROVISIONED → ACTIVE` xảy ra khi thiết bị kết nối và gửi heartbeat đầu tiên. Đáp ứng yêu cầu thiết bị có định danh/khóa riêng và thiết bị bị thu hồi không gửi được dữ liệu.
+
+---
+
+## Phần C — Socket.IO Realtime Events [ĐÃ BỔ SUNG]
+
+Frontend kết nối Socket.IO tới Backend để nhận cập nhật thời gian thực. Đây **không phải** kênh giao tiếp với ESP32 (ESP32 chỉ giao tiếp qua MQTT — xem Phần B).
+
+### C.1 Danh sách event
+
+| Event | Khi nào emit | Payload |
+|---|---|---|
+| `telemetry:update` | Mỗi khi backend lưu một bản ghi TELEMETRY mới | Giống response của `GET /devices/:id/telemetry/latest` |
+| `device:status` | Khi `device_status` đổi (ONLINE/OFFLINE/FAULT) | `{ "device_id": "...", "device_status": "...", "last_seen_at": "..." }` |
+| `command:update` | Khi `COMMAND.status` đổi (SENT/ACKNOWLEDGED/FAILED/TIMEOUT) | Giống response của `POST /devices/:id/commands`, cập nhật `status`/`result` |
+| `alert:new` | Khi tạo alert mới | Giống 1 phần tử trong response của `GET /alerts` |
+
+Payload của cả 4 event đều tái dùng đúng schema JSON đã định nghĩa ở Phần A — không tạo thêm cấu trúc dữ liệu riêng cho realtime.
+
+### C.2 Scope
+
+**[ĐÃ BỔ SUNG]** Mỗi thiết bị tương ứng một room `device:{device_id}`. Sau khi xác thực JWT, server cho socket vào room của các thiết bị user được phép truy cập (Admin: tất cả). Mọi event chỉ emit tới room của thiết bị liên quan. Khi `PUT /devices/:id/access` thay đổi quyền, server cập nhật room của user bị ảnh hưởng. Cách kiểm tra lại quyền khi access token hết hạn trong phiên socket: **TODO/UNDEFINED**.
+
+### C.3 Authentication
+
+Chỉ **client đã xác thực** (có JWT access token hợp lệ) mới được phép kết nối Socket.IO và nhận các event trên. Cơ chế xác thực cụ thể (middleware handshake, truyền token qua query/header...) là chi tiết implementation: **TODO/UNDEFINED**, cần chốt khi triển khai. Hành vi bắt buộc: client không có JWT hợp lệ phải bị từ chối kết nối.
+
+### C.4 Độ tin cậy
+
+Socket.IO **chỉ dùng để cập nhật realtime**; **REST/Database là source of truth**. Client không được giả định việc nhận event đồng nghĩa dữ liệu đã được lưu, hoặc giả định sẽ luôn nhận được mọi event đã phát (có thể bỏ lỡ nếu mất kết nối tạm thời). Khi client reload/reconnect, phải tự đồng bộ lại trạng thái bằng cách gọi lại REST endpoint tương ứng, sau đó mới tiếp tục nhận cập nhật qua Socket.IO.

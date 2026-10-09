@@ -118,6 +118,7 @@ Sơ đồ nối dây chi tiết: **[ĐÃ BỔ SUNG]**
 - Adaptive Lighting được thực hiện **trên ESP32** để giảm độ trễ và vẫn hoạt động được khi Internet/Backend tạm thời mất kết nối.
 - Backend chịu trách nhiệm lưu dữ liệu, quản lý thiết bị, cấu hình, cảnh báo và kiểm soát quyền.
 - Socket.IO chỉ dùng để đẩy dữ liệu thay đổi theo thời gian thực từ Backend đến Web.
+- **[ĐÃ BỔ SUNG]** Backend kiểm tra quyền truy cập theo thiết bị (`DEVICE_ACCESS`) tại API và khi gửi event Socket.IO; Frontend không tự quyết định phạm vi dữ liệu.
 
 ## 6. Data Flows
 
@@ -137,12 +138,13 @@ Web → Backend → MQTT → ESP32 → LED → ACK → Backend → Web
 
 - **DEVICE_OFFLINE:** **[ĐÃ BỔ SUNG]** Phát sinh khi heartbeat của thiết bị bị timeout. ESP32 định kỳ gửi heartbeat mỗi 10 giây (10s) lên topic `iot/device/{id}/status`. Backend kiểm tra theo chu kỳ: nếu sau 30 giây (3 chu kỳ liên tiếp) không nhận được heartbeat hoặc telemetry, backend cập nhật `device_status = 'OFFLINE'` và tạo cảnh báo `DEVICE_OFFLINE` (Severity: HIGH).
   - *Lý do/Rationale:* Cần chốt con số chu kỳ cụ thể để lập trình hàm kiểm tra định kỳ (`setInterval`) ở Backend và Firmware. Chu kỳ 10s và ngưỡng timeout 30s (3 lần miss) là tiêu chuẩn thông dụng trong IoT để tránh ngắt nhầm khi mạng Wi-Fi chập chờn nhất thời.
+  - **[ĐÃ BỔ SUNG] Phạm vi áp dụng:** kiểm tra heartbeat timeout chỉ áp dụng cho thiết bị có `lifecycle_status = 'ACTIVE'`. Thiết bị `MAINTENANCE`/`DECOMMISSIONED` bị từ chối kết nối là chủ ý nên **không** sinh cảnh báo `DEVICE_OFFLINE`; backend chỉ đặt `device_status = 'OFFLINE'`.
 - **LAMP_FAULT:** **[ĐÃ BỔ SUNG]** Backend tạo cảnh báo khi đèn nhận lệnh bật với mức $PWM \ge 30\%$ nhưng dòng điện tiêu thụ đo được từ INA219 (qua telemetry) thấp hơn ngưỡng $I < 0.05\text{A}$ ($50\text{mA}$) duy trì liên tục trong thời gian $T \ge 5\text{ giây}$. Trạng thái thiết bị chuyển sang `FAULT` và tạo cảnh báo `LAMP_FAULT` (Severity: HIGH).
   - *Lý do/Rationale:* Khi PWM ở mức thấp (0–20% theo bảng Adaptive Lighting khi phòng không có người), dòng tải của LED strip rất nhỏ (có thể dưới 50mA) dẫn đến báo động giả nếu kiểm tra ở mọi mức PWM > 0%. Mức $PWM \ge 30\%$ tương ứng trạng thái có người, đèn bật sáng rõ ràng; khoảng thời gian 5s để bỏ qua dao động dòng điện quá độ (transient/inrush) lúc vừa đổi trạng thái PWM.
 - Quy trình xử lý cảnh báo (acknowledge/resolve) sau khi tạo: thực hiện qua API `/alerts/:id/acknowledge` và `/alerts/:id/resolve` — xem `API_SPEC.md`.
 
 Cơ chế QoS/retry/timeout/xử lý bản tin trùng cho luồng MQTT: **[ĐÃ BỔ SUNG]** — **nguồn chính thức của các thông số này là `API_SPEC.md` mục B.6**; phần dưới đây chỉ tóm tắt ở mức kiến trúc để tránh hai nơi lệch nhau.
-- **QoS:** QoS 1 cho `command`, `ack`, `config` và bản tin LWT; QoS 0 cho `telemetry` và heartbeat định kỳ. Cảnh báo (alert) **không** đi qua MQTT — chúng được backend tạo và lưu vào PostgreSQL, Web truy cập qua REST `GET /alerts`; không có topic `alert`. (Việc đẩy cảnh báo realtime qua Socket.IO: **TODO/UNDEFINED**, docs hiện chưa quy định.)
+- **QoS:** QoS 1 cho `command`, `ack`, `config` và bản tin LWT; QoS 0 cho `telemetry` và heartbeat định kỳ. Cảnh báo (alert) **không** đi qua MQTT — chúng được backend tạo và lưu vào PostgreSQL, Web truy cập qua REST `GET /alerts`; không có topic `alert`. Cảnh báo mới được đẩy realtime tới Web qua Socket.IO bằng event `alert:new` (xem `API_SPEC.md` Phần C), không phải qua MQTT.
 - **Command dispatch:** REST trả `202 Accepted` ngay, lệnh được xử lý bất đồng bộ. Backend chờ ACK 5 giây mỗi lần, retry tối đa 2 lần (nghỉ 1 giây trước retry #1, 2 giây trước retry #2), mọi lần gửi dùng **cùng `command_id`**. Tổng thời gian tối đa khoảng 18 giây trước khi kết luận `TIMEOUT`.
 - **Trạng thái lệnh:** `PENDING` (vừa tạo) → `SENT` (đã publish MQTT; các lần retry vẫn là `SENT`) → `ACKNOWLEDGED` / `FAILED` / `TIMEOUT`. Ánh xạ từ ACK và điều kiện chi tiết: `API_SPEC.md` mục B.6.
 - **Xử lý bản tin trùng (deduplication):** ESP32 và Backend giữ cache các `command_id` gần đây; nhận trùng thì không thực thi lại mà chỉ phát lại ACK đã tạo trước đó.
@@ -206,6 +208,21 @@ REGISTERED → PROVISIONED → ACTIVE → MAINTENANCE → DECOMMISSIONED
 | MAINTENANCE | Đang bảo trì |
 | DECOMMISSIONED | Ngừng sử dụng / thu hồi kết nối |
 
+**[ĐÃ BỔ SUNG] Ngữ nghĩa vận hành của từng trạng thái:**
+
+| lifecycle_status | Ý nghĩa vận hành | MQTT | Lệnh điều khiển | Cảnh báo `DEVICE_OFFLINE` |
+|---|---|---|---|---|
+| REGISTERED | Đã tạo bản ghi và sinh `device_key`, chưa cho phép kết nối | Từ chối | `409` | Không |
+| PROVISIONED | Cho phép kết nối lần đầu (sau khi nạp firmware) | Cho phép | `409` | Không |
+| ACTIVE | Hoạt động bình thường | Cho phép | Cho phép | Có |
+| MAINTENANCE | **Tạm khóa**: thiết bị không được hoạt động bình thường trên hệ thống, giữ nguyên dữ liệu | Từ chối | `409` | Không |
+| DECOMMISSIONED | **Thu hồi vĩnh viễn**, không thể đảo ngược | Từ chối | `409` | Không |
+
+- Admin chuyển `REGISTERED → PROVISIONED` **sau khi** đã nạp `device_key` vào firmware và sẵn sàng cho thiết bị kết nối; khi thiết bị kết nối và gửi heartbeat đầu tiên, backend tự chuyển `PROVISIONED → ACTIVE`.
+- `MAINTENANCE → ACTIVE`: Admin chuyển lại; thiết bị tự reconnect bằng cơ chế reconnect sẵn có của firmware.
+- Khi chuyển sang `MAINTENANCE`/`DECOMMISSIONED`, backend phải ngắt kết nối hiện tại của thiết bị (cơ chế: **TODO/UNDEFINED**, xem `API_SPEC.md` mục B.7). `credential_hash` được giữ nguyên, broker từ chối dựa trên `lifecycle_status`.
+- *Lý do/Rationale:* đáp ứng yêu cầu tạm khóa và thu hồi thiết bị mà không thêm trạng thái mới vào schema; tránh cảnh báo giả khi chủ động bảo trì.
+
 **Phân biệt quan trọng:**
 
 - `lifecycle_status` — trạng thái vòng đời quản lý (bảng trên): REGISTERED, PROVISIONED, ACTIVE, MAINTENANCE, DECOMMISSIONED.
@@ -218,6 +235,8 @@ Hai trường này độc lập và đều tồn tại trong bảng `DEVICE` (xe
 - **Authentication:** JWT được sử dụng để xác thực API. Mật khẩu người dùng được băm bằng **bcryptjs**, không lưu plaintext.
 - **Authorization (RBAC):** ba vai trò — Admin, Operator, Viewer. Backend kiểm tra RBAC **tại API** (không chỉ ẩn nút trên giao diện frontend).
 - **Device identity:** mỗi thiết bị có `device_id` và `credential_hash` riêng để xác thực kết nối MQTT.
+- **[ĐÃ BỔ SUNG] Device-level authorization:** quyền truy cập thiết bị của Operator/Viewer được xác định bởi bảng `DEVICE_ACCESS` (Admin: tất cả), kiểm tra tại backend/API; không đủ quyền trả `404`. `assigned_user_id` không dùng để phân quyền.
+- **[ĐÃ BỔ SUNG] MQTT authentication/ACL:** xác thực dựa trên DB và ACL theo `device_id`, quyền kết nối theo `lifecycle_status`; xem `API_SPEC.md` mục B.7.
 - **Secret management:** credential/secret được lưu qua biến môi trường hoặc cơ chế cấu hình an toàn, không commit lên GitHub.
 - **Audit:** các thao tác quan trọng được ghi vào `audit_logs`.
 - Thiết bị bị khóa/revoke/decommission không được tiếp tục hoạt động hợp lệ trên hệ thống.
@@ -293,7 +312,7 @@ stateDiagram-v2
 ```
 
 > **[ĐÃ BỔ SUNG]** Quy tắc chuyển trạng thái vòng đời:
-> - `REGISTERED` → `PROVISIONED`: khi thiết bị được cấp thông tin nhận dạng/credential.
+> - `REGISTERED` → `PROVISIONED`: khi thiết bị được cấp thông tin nhận dạng/credential. Admin thực hiện sau khi đã nạp `device_key` vào firmware; từ trạng thái này broker mới cho phép thiết bị kết nối (xem mục 8).
 > - `PROVISIONED` → `ACTIVE`: khi thiết bị kết nối thành công và bắt đầu gửi heartbeat/telemetry.
 > - `ACTIVE` ↔ `MAINTENANCE`: cho phép chuyển hai chiều. Khi cần bảo dưỡng/thay linh kiện đưa về `MAINTENANCE`; sau khi sửa xong, Admin chuyển trở lại `ACTIVE`.
 > - `ACTIVE` hoặc `MAINTENANCE` → `DECOMMISSIONED`: khi thiết bị ngừng hoạt động hoàn toàn. Đây là trạng thái kết thúc (terminal state), không thể chuyển ngược lại.
