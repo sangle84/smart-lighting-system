@@ -53,6 +53,7 @@ smart-lighting-system/
 | `docs/ARCHITECTURE.md` | Kiến trúc và các thành phần hệ thống (HOW ở mức tổ chức) |
 | `docs/API_SPEC.md` | REST API và MQTT contract (communication contract) |
 | `docs/DATABASE.md` | Database schema và relationships |
+| `docs/UI.md` | Hướng dẫn giao diện, màu chủ đề và design tokens |
 | `docs/PROJECT-RULES.md` | Quy tắc phát triển dành cho agent khi sửa code |
 | `PLAN.md` | Tiến độ theo giai đoạn và bằng chứng hoàn thành; không chứa contract kỹ thuật |
 
