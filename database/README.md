@@ -1,10 +1,11 @@
 # Database
 
-The database uses PostgreSQL and contains the eight entities defined in
+The database uses PostgreSQL 18 and contains the eight entities defined in
 [`docs/DATABASE.md`](../docs/DATABASE.md). The initial schema is applied by the
 versioned migration:
 
 ```powershell
+docker compose --env-file .env -f deployment/docker-compose.yml up -d postgres
 psql "$env:DATABASE_URL" -v ON_ERROR_STOP=1 `
   -f database/migrations/001_initial_schema.sql
 ```
