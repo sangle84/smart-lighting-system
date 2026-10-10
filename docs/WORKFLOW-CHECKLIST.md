@@ -13,12 +13,10 @@
 
 ### 2. Tạo branch nếu cần
 - Không code trực tiếp lên `main`.
-- Tạo branch theo format:
-  - `Sang/<task-name>`
-  - `Thinh/<task-name>`
-- Ví dụ:
-  - `Sang/feature/database-schema`
-  - `Thinh/feature/mqtt-integration`
+- Chỉ dùng 2 nhánh chính của nhóm: `Sang` và `Thinh`.
+- Không tạo nhánh con dưới dạng `Sang/<task-name>` hoặc `Thinh/<task-name>`.
+- Nếu đang ở `main`, tạo nhánh mới với tên `Sang` hoặc `Thinh` rồi bắt đầu làm việc.
+- Mỗi người làm việc trên nhánh riêng của mình.
 
 ### 3. Pull code mới nhất
 - Trước khi bắt đầu task, cập nhật branch hiện tại bằng `git pull` hoặc `git fetch` + `git rebase` nếu cần.
@@ -50,6 +48,7 @@
 
 ### 8. Commit và bàn giao
 - Commit local theo từng task logic.
+- Push branch lên remote theo nhánh hiện tại (`Sang` hoặc `Thinh`) nếu cần chia sẻ hoặc review.
 - Không push trực tiếp lên `main`.
 - Gửi bằng chứng test và file chính đã sửa cho người review.
 

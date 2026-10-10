@@ -78,7 +78,7 @@ Khi nhận một task, agent thực hiện theo thứ tự:
 9. Kiểm tra/test phần bị ảnh hưởng sau khi thay đổi (xem `docs/PROJECT-RULES.md` mục Testing Rules).
 10. Nếu thay đổi làm ảnh hưởng đến API, database hoặc architecture, **cập nhật tài liệu tương ứng** trong cùng lần thay đổi.
 11. Nếu thay đổi trạng thái triển khai, cập nhật `PLAN.md` **chỉ khi có bằng chứng cụ thể**; không đánh dấu `Done` chỉ vì đã yêu cầu agent thực hiện hoặc vì agent tự báo cáo đã xong.
-12. Sau khi hoàn thành và đã kiểm tra, **tự commit local** theo `docs/PROJECT-RULES.md` mục 9 (mục "Agent tự động commit"): một thay đổi logic một commit, chỉ add file cụ thể, không commit secret. **Không `git push`**, không tạo tag, không sửa lịch sử Git; báo lại cho người dùng hash và nội dung commit để họ tự push.
+12. Sau khi hoàn thành và đã kiểm tra, **tự commit local** theo `docs/PROJECT-RULES.md` mục 9 (mục "Agent tự động commit"): một thay đổi logic một commit, chỉ add file cụ thể, không commit secret. Nếu cần chia sẻ hoặc review, có thể `git push` lên remote theo nhánh hiện tại (`Sang` hoặc `Thinh`) nhưng **không push trực tiếp lên `main`**; không tạo tag, không sửa lịch sử Git; báo lại cho người dùng hash và nội dung commit để họ tự push.
 
 ## 5. Source of Truth
 
@@ -99,9 +99,10 @@ Khi có mâu thuẫn thông tin, agent ưu tiên theo thứ tự sau:
 ## 6. Important Constraints
 
 - Agent được tự commit local nhưng **không bao giờ tự push** hoặc tạo tag/release (xem `docs/PROJECT-RULES.md` mục 9).
-- Mọi thay đổi code phải bắt đầu từ một feature branch theo owner. Branch prefix bắt buộc: `Sang/` hoặc `Thinh/`. Không được code trực tiếp lên `main`.
+- Mọi thay đổi code phải bắt đầu từ đúng nhánh của owner. Chỉ dùng 2 nhánh chính: `Sang` và `Thinh`. Không được code trực tiếp lên `main`.
 - Nếu branch hiện tại không khớp với owner đang làm hoặc đang ở `main`, agent phải tạo nhánh mới trước khi chỉnh file. Đây là quy tắc bắt buộc để tránh xung đột và đảm bảo trách nhiệm cá nhân rõ ràng.
 - Trước khi bắt đầu task, agent phải pull/fetch code mới nhất của branch hiện tại hoặc rebase nếu đang có thay đổi cũ; không làm việc trên snapshot quá cũ so với repo.
+- Không tạo nhánh con dưới dạng `Sang/<task-name>` hoặc `Thinh/<task-name>`; chỉ dùng 2 nhánh chính `Sang` và `Thinh`.
 - Đây là **prototype phạm vi hẹp**: 1 node ESP32 vật lý (`LIGHT-001`), cộng thiết bị mô phỏng (`LIGHT-002`, trong `tests/mqtt-simulator`) chỉ để kiểm thử phân quyền/thu hồi/mở rộng; thiết bị mô phỏng không thay thế thiết bị vật lý.
 - Công nghệ đã được lựa chọn cố định (xem `docs/ARCHITECTURE.md`), agent **không tự ý thay thế** (ví dụ không đổi PostgreSQL sang MongoDB, không đổi MQTT sang HTTP polling).
 - Hệ thống dùng **RBAC ba vai trò**: Admin, Operator, Viewer. Mọi thay đổi liên quan đến quyền phải tuân thủ đúng ma trận quyền trong `docs/PRD.md` và phạm vi truy cập theo thiết bị (`DEVICE_ACCESS`, xem `docs/API_SPEC.md`).

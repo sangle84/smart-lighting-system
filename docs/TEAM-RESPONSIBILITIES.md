@@ -107,15 +107,12 @@ Mỗi thành viên phải bàn giao theo chuẩn sau:
 ### 5.4 Quy tắc Git branch
 
 - Không code trực tiếp lên `main`.
-- Luôn tạo nhánh mới trước khi bắt đầu làm việc.
+- Chỉ dùng 2 nhánh chính của nhóm: `Sang` và `Thinh`.
+- Không tạo nhánh con dưới dạng `Sang/<task-name>` hoặc `Thinh/<task-name>`.
 - Trước khi bắt đầu task, phải pull/fetch code mới nhất của branch hiện tại để cập nhật trạng thái cùng repo và tránh xung đột với người khác.
-- Tên nhánh theo format: `Sang/<task-name>` hoặc `Thinh/<task-name>`.
-- Ví dụ:
-  - `Sang/feature/database-schema`
-  - `Sang/feature/auth-rbac`
-  - `Thinh/feature/mqtt-integration`
-  - `Thinh/feature/frontend-core`
-- Nếu hiện đang ở nhánh `main`, phải tạo nhánh mới trước khi chỉnh file hoặc commit.
+- Nếu hiện đang ở nhánh `main`, phải tạo nhánh mới theo tên người phụ trách: `Sang` hoặc `Thinh`, rồi bắt đầu làm việc.
+- Mỗi người làm việc trên nhánh riêng của mình, không tự ý checkout sang nhánh của người kia trừ khi có đồng thuận rõ ràng và review cần thiết.
+- Nếu cần chia sẻ hoặc review, có thể push nhánh hiện tại lên remote; nhưng không push trực tiếp lên `main`.
 
 ## 6. Quy tắc nghiệm thu
 
@@ -126,12 +123,12 @@ Mỗi thành viên phải bàn giao theo chuẩn sau:
 
 ## 7. Branch & Role Mapping
 
-| Branch prefix | Default owner | Scope mặc định |
+| Branch name | Default owner | Scope mặc định |
 |---|---|---|
-| `Sang/` | Sang | Database, Auth, RBAC, REST API, Deployment |
-| `Thinh/` | Thinh | MQTT, Realtime, Frontend |
+| `Sang` | Sang | Database, Auth, RBAC, REST API, Deployment |
+| `Thinh` | Thinh | MQTT, Realtime, Frontend |
 
-Nếu current branch không khớp với một trong hai prefix trên, AI hoặc người làm phải dừng lại và xác minh lại role trước khi code. Đây chỉ là default context, không phải quyền thay đổi các contract kỹ thuật.
+Nếu current branch không khớp với một trong hai tên nhánh chính trên, AI hoặc người làm phải dừng lại và xác minh lại role trước khi code. Đây chỉ là default context, không phải quyền thay đổi các contract kỹ thuật.
 
 ## 8. Kết luận
 
