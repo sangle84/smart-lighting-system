@@ -55,9 +55,11 @@ smart-lighting-system/
 | `docs/DATABASE.md` | Database schema và relationships |
 | `docs/UI.md` | Hướng dẫn giao diện, màu chủ đề và design tokens |
 | `docs/PROJECT-RULES.md` | Quy tắc phát triển dành cho agent khi sửa code |
+| `docs/TEAM-RESPONSIBILITIES.md` | Phân công hai thành viên, ownership theo module, branch mapping và quy tắc bàn giao |
 | `PLAN.md` | Tiến độ theo giai đoạn và bằng chứng hoàn thành; không chứa contract kỹ thuật |
 
-Agent nên đọc file tương ứng với loại task **trước khi** viết hoặc sửa code, không suy đoán từ trí nhớ.
+Agent nên đọc file tương ứng với loại task **trước khi** viết hoặc sửa code, không suy đoán từ trí nhớ.  
+Nếu đang làm dự án theo nhóm, agent phải đồng thời đọc `docs/TEAM-RESPONSIBILITIES.md` để xác định owner và nhánh hoạt động hiện tại trước khi sửa code.
 
 ## 4. Agent Workflow
 
@@ -65,14 +67,17 @@ Khi nhận một task, agent thực hiện theo thứ tự:
 
 1. Đọc `AGENTS.md` (file này).
 2. Xác định loại task (feature backend? sửa firmware? đổi API? thêm bảng DB? sửa UI?).
-3. Đọc tài liệu liên quan trong `docs/` tương ứng với loại task đó.
-4. Kiểm tra code hiện tại trong repo (không giả định code đã tồn tại hay đã hoạt động đúng).
-5. **Không tự ý** thay đổi architecture, API contract, MQTT contract hoặc database schema nếu không được yêu cầu rõ ràng.
-6. Thực hiện thay đổi tối thiểu cần thiết để hoàn thành task.
-7. Kiểm tra/test phần bị ảnh hưởng sau khi thay đổi (xem `docs/PROJECT-RULES.md` mục Testing Rules).
-8. Nếu thay đổi làm ảnh hưởng đến API, database hoặc architecture, **cập nhật tài liệu tương ứng** trong cùng lần thay đổi.
-9. Nếu thay đổi trạng thái triển khai, cập nhật `PLAN.md` **chỉ khi có bằng chứng cụ thể**; không đánh dấu `Done` chỉ vì đã yêu cầu agent thực hiện hoặc vì agent tự báo cáo đã xong.
-10. Sau khi hoàn thành và đã kiểm tra, **tự commit local** theo `docs/PROJECT-RULES.md` mục 9 (mục "Agent tự động commit"): một thay đổi logic một commit, chỉ add file cụ thể, không commit secret. **Không `git push`**, không tạo tag, không sửa lịch sử Git; báo lại cho người dùng hash và nội dung commit để họ tự push.
+3. Đọc `docs/TEAM-RESPONSIBILITIES.md` để xác định owner mặc định theo nhánh hiện tại và phạm vi của người làm.
+4. Đọc tài liệu liên quan trong `docs/` tương ứng với loại task đó.
+5. Kiểm tra branch hiện tại trước khi chỉnh code: nếu đang ở `main` hoặc branch không có prefix hợp lệ (`Sang/` hoặc `Thinh/`), **tạo nhánh mới trước khi sửa**; không code thẳng lên `main`.
+6. Trước khi bắt đầu task, **pull hoặc fetch/rebase code mới nhất** của branch hiện tại để tránh làm việc trên snapshot cũ và xung đột không cần thiết.
+7. Kiểm tra code hiện tại trong repo (không giả định code đã tồn tại hay đã hoạt động đúng).
+8. **Không tự ý** thay đổi architecture, API contract, MQTT contract hoặc database schema nếu không được yêu cầu rõ ràng.
+9. Thực hiện thay đổi tối thiểu cần thiết để hoàn thành task.
+9. Kiểm tra/test phần bị ảnh hưởng sau khi thay đổi (xem `docs/PROJECT-RULES.md` mục Testing Rules).
+10. Nếu thay đổi làm ảnh hưởng đến API, database hoặc architecture, **cập nhật tài liệu tương ứng** trong cùng lần thay đổi.
+11. Nếu thay đổi trạng thái triển khai, cập nhật `PLAN.md` **chỉ khi có bằng chứng cụ thể**; không đánh dấu `Done` chỉ vì đã yêu cầu agent thực hiện hoặc vì agent tự báo cáo đã xong.
+12. Sau khi hoàn thành và đã kiểm tra, **tự commit local** theo `docs/PROJECT-RULES.md` mục 9 (mục "Agent tự động commit"): một thay đổi logic một commit, chỉ add file cụ thể, không commit secret. **Không `git push`**, không tạo tag, không sửa lịch sử Git; báo lại cho người dùng hash và nội dung commit để họ tự push.
 
 ## 5. Source of Truth
 
@@ -93,6 +98,9 @@ Khi có mâu thuẫn thông tin, agent ưu tiên theo thứ tự sau:
 ## 6. Important Constraints
 
 - Agent được tự commit local nhưng **không bao giờ tự push** hoặc tạo tag/release (xem `docs/PROJECT-RULES.md` mục 9).
+- Mọi thay đổi code phải bắt đầu từ một feature branch theo owner. Branch prefix bắt buộc: `Sang/` hoặc `Thinh/`. Không được code trực tiếp lên `main`.
+- Nếu branch hiện tại không khớp với owner đang làm hoặc đang ở `main`, agent phải tạo nhánh mới trước khi chỉnh file. Đây là quy tắc bắt buộc để tránh xung đột và đảm bảo trách nhiệm cá nhân rõ ràng.
+- Trước khi bắt đầu task, agent phải pull/fetch code mới nhất của branch hiện tại hoặc rebase nếu đang có thay đổi cũ; không làm việc trên snapshot quá cũ so với repo.
 - Đây là **prototype phạm vi hẹp**: 1 node ESP32 vật lý (`LIGHT-001`), cộng thiết bị mô phỏng (`LIGHT-002`, trong `tests/mqtt-simulator`) chỉ để kiểm thử phân quyền/thu hồi/mở rộng; thiết bị mô phỏng không thay thế thiết bị vật lý.
 - Công nghệ đã được lựa chọn cố định (xem `docs/ARCHITECTURE.md`), agent **không tự ý thay thế** (ví dụ không đổi PostgreSQL sang MongoDB, không đổi MQTT sang HTTP polling).
 - Hệ thống dùng **RBAC ba vai trò**: Admin, Operator, Viewer. Mọi thay đổi liên quan đến quyền phải tuân thủ đúng ma trận quyền trong `docs/PRD.md` và phạm vi truy cập theo thiết bị (`DEVICE_ACCESS`, xem `docs/API_SPEC.md`).
