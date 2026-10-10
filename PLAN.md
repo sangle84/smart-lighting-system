@@ -11,7 +11,7 @@
 
 | # | Giai đoạn | Tài liệu tham chiếu | Status |
 |---|---|---|---|
-| 1 | Database & Schema | `docs/DATABASE.md` | Not started |
+| 1 | Database & Schema | `docs/DATABASE.md` | Done |
 | 2 | Backend Core (Auth, RBAC) | `docs/API_SPEC.md` Phần A.1–A.2, `docs/PROJECT-RULES.md` mục 2, 8 | Not started |
 | 3 | MQTT Integration | `docs/API_SPEC.md` Phần B, `docs/ARCHITECTURE.md` mục 6.3, 7 | Not started |
 | 4 | REST API (Devices, Commands, Alerts, Dashboard, Audit) | `docs/API_SPEC.md` Phần A.3–A.8 | Not started |
@@ -118,4 +118,4 @@ Done khi toàn bộ TC01–TC10 trong `docs/PRD.md` đã chạy ít nhất 1 l�
 
 | Ngày | Giai đoạn | Trạng thái mới | Bằng chứng | Loại evidence |
 | ---- | --------- | -------------- | --------- | -------------- |
-| —    | —         | —              | (chưa có mục nào) | — |
+| 2026-10-10 | Giai đoạn 1 — Database & Schema | Done | PostgreSQL 18 chạy bằng Docker Compose trên host port tạm `55432`; migration `database/migrations/001_initial_schema.sql` chạy thành công, tạo đúng 8 bảng; seed `database/seeds/001_roles_and_admin.sql` tạo 3 role và 1 admin; smoke check CHECK liên trường của `command` và khóa kép `device_access` đều bị DB từ chối đúng thiết kế. | Docker/PostgreSQL runtime validation |
