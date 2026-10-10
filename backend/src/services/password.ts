@@ -25,3 +25,7 @@ export function validatePasswordComplexity(password: string): { valid: boolean; 
   }
   return { valid: true };
 }
+
+export async function isPasswordSame(plain: string, hash: string): Promise<boolean> {
+  return verifyPassword(plain, hash);
+}
