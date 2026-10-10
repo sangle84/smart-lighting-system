@@ -16,49 +16,42 @@ const pool = new Pool({
   connectionString: config.DATABASE_URL,
 });
 
-// Controllers
-const userRepo = new UserRepo(pool);
-const authController = new AuthController(userRepo);
-const userController = new UserController(userRepo);
+export function createApp(databasePool: Pool = pool): express.Express {
+  const userRepo = new UserRepo(databasePool);
+  const authController = new AuthController(userRepo);
+  const userController = new UserController(userRepo);
+  const app = express();
 
-// Routes
-const app = express();
+  app.use(cors({ origin: true, credentials: true }));
+  app.use(express.json());
+  app.use(cookieParser());
 
-// Middleware cơ bản
-app.use(cors({ origin: '*', credentials: true }));
-app.use(express.json());
-app.use(cookieParser());
-
-// Routes cơ bản
-app.get('/health', (_req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
-});
-
-// Routes authentication
-app.use('/auth', createAuthRoutes(authController));
-
-// Routes user administration
-app.use('/users', createUsersRoutes(userController));
-
-// Error handlers
-app.use(validationErrorHandler);
-app.use(notFoundHandler);
-app.use(errorHandler);
-
-const PORT = config.PORT;
-
-const server = app.listen(PORT, () => {
-  console.log(`Backend running on port ${PORT}`);
-});
-
-// Graceful shutdown
-process.on('SIGTERM', () => {
-  console.log('SIGTERM received, shutting down gracefully');
-  server.close(() => {
-    console.log('HTTP server closed');
-    pool.end(() => {
-      console.log('Database pool closed');
-      process.exit(0);
-    });
+  app.get('/health', (_req, res) => {
+    res.json({ status: 'ok', timestamp: new Date().toISOString() });
   });
-});
+
+  app.use('/auth', createAuthRoutes(authController));
+  app.use('/users', createUsersRoutes(userController));
+
+  app.use(validationErrorHandler);
+  app.use(notFoundHandler);
+  app.use(errorHandler);
+
+  return app;
+}
+
+if (require.main === module) {
+  const app = createApp();
+  const server = app.listen(config.PORT, () => {
+    console.log(`Backend running on port ${config.PORT}`);
+  });
+
+  const shutdown = (): void => {
+    server.close(() => {
+      void pool.end().then(() => process.exit(0));
+    });
+  };
+
+  process.on('SIGTERM', shutdown);
+  process.on('SIGINT', shutdown);
+}

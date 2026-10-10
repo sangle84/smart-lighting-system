@@ -68,7 +68,8 @@ export class UserRepo {
           u.role_id,
           r.role_name,
           u.status,
-          u.created_at
+          u.created_at,
+          u.password_hash
         FROM users u
         JOIN role r ON u.role_id = r.role_id
         WHERE u.username = $1
@@ -94,7 +95,8 @@ export class UserRepo {
           u.role_id,
           r.role_name,
           u.status,
-          u.created_at
+          u.created_at,
+          u.password_hash
         FROM users u
         JOIN role r ON u.role_id = r.role_id
         WHERE u.user_id = $1
@@ -218,7 +220,7 @@ export class UserRepo {
           username,
           email,
           role_id,
-          (SELECT role_name FROM role WHERE role_id = $1) AS role_name,
+          (SELECT role_name FROM role WHERE role_id = users.role_id) AS role_name,
           status,
           created_at,
           updated_at
