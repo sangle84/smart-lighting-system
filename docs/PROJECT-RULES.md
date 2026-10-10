@@ -87,6 +87,7 @@
 - Không commit `.env` (chỉ dùng `.env.example` làm mẫu).
 - Không commit secret dưới bất kỳ hình thức nào.
 - Commit phải tập trung vào một thay đổi rõ ràng (tránh commit gộp nhiều việc không liên quan).
+- Không thêm trailer `Co-authored-by: Copilot` hoặc trailer nhận Copilot làm author/contributor. Trước khi push, phải kiểm tra commit message để bảo đảm GitHub chỉ ghi nhận thành viên thực hiện.
 - Không sửa lịch sử Git (force push, rebase lịch sử đã chia sẻ...) nếu không được yêu cầu rõ ràng.
 - Quy ước đặt tên commit message: **[ĐÃ BỔ SUNG]** Định dạng commit message: `<type>: <mô tả ngắn>` (không dùng scope). Ví dụ: `feat: add telemetry ingestion handler`, `fix: fix reconnection logic`, `docs: update MQTT payload spec`. Các type hợp lệ: `feat`, `fix`, `docs`, `refactor`, `test`, `chore`.
   - *Lý do/Rationale:* Cần thống nhất quy ước commit ngay từ đầu để giữ lịch sử Git rõ ràng và hỗ trợ sinh changelog tự động.

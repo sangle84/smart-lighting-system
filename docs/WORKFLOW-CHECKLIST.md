@@ -50,6 +50,7 @@
 - Commit local theo từng task logic.
 - Push branch lên remote theo nhánh hiện tại (`Sang` hoặc `Thinh`) nếu cần chia sẻ hoặc review.
 - Không push trực tiếp lên `main`.
+- Trước khi push, kiểm tra commit message không có `Co-authored-by: Copilot`; không để Copilot xuất hiện trong GitHub Contributors.
 - Gửi bằng chứng test và file chính đã sửa cho người review.
 
 ## Quick rule

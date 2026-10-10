@@ -79,6 +79,7 @@ Khi nhận một task, agent thực hiện theo thứ tự:
 10. Nếu thay đổi làm ảnh hưởng đến API, database hoặc architecture, **cập nhật tài liệu tương ứng** trong cùng lần thay đổi.
 11. Nếu thay đổi trạng thái triển khai, cập nhật `PLAN.md` **chỉ khi có bằng chứng cụ thể**; không đánh dấu `Done` chỉ vì đã yêu cầu agent thực hiện hoặc vì agent tự báo cáo đã xong.
 12. Sau khi hoàn thành và đã kiểm tra, **tự commit local** theo `docs/PROJECT-RULES.md` mục 9 (mục "Agent tự động commit"): một thay đổi logic một commit, chỉ add file cụ thể, không commit secret. Nếu cần chia sẻ hoặc review, có thể `git push` lên remote theo nhánh hiện tại (`Sang` hoặc `Thinh`) nhưng **không push trực tiếp lên `main`**; không tạo tag, không sửa lịch sử Git; báo lại cho người dùng hash và nội dung commit để họ tự push.
+13. Không thêm `Co-authored-by: Copilot` hoặc bất kỳ trailer nào nhận Copilot làm author/contributor. Commit phải được ghi nhận dưới tài khoản thành viên đang làm việc; kiểm tra phần cuối commit message trước khi push.
 
 ## 5. Source of Truth
 
