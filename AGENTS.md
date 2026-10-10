@@ -56,10 +56,11 @@ smart-lighting-system/
 | `docs/UI.md` | Hướng dẫn giao diện, màu chủ đề và design tokens |
 | `docs/PROJECT-RULES.md` | Quy tắc phát triển dành cho agent khi sửa code |
 | `docs/TEAM-RESPONSIBILITIES.md` | Phân công hai thành viên, ownership theo module, branch mapping và quy tắc bàn giao |
+| `docs/WORKFLOW-CHECKLIST.md` | Checklist bắt đầu task, tạo branch, pull code mới và workflow chuẩn cho nhóm |
 | `PLAN.md` | Tiến độ theo giai đoạn và bằng chứng hoàn thành; không chứa contract kỹ thuật |
 
 Agent nên đọc file tương ứng với loại task **trước khi** viết hoặc sửa code, không suy đoán từ trí nhớ.  
-Nếu đang làm dự án theo nhóm, agent phải đồng thời đọc `docs/TEAM-RESPONSIBILITIES.md` để xác định owner và nhánh hoạt động hiện tại trước khi sửa code.
+Nếu đang làm dự án theo nhóm, agent phải đồng thời đọc `docs/TEAM-RESPONSIBILITIES.md` và `docs/WORKFLOW-CHECKLIST.md` để xác định owner, nhánh hoạt động hiện tại và quy trình bắt đầu task trước khi sửa code.
 
 ## 4. Agent Workflow
 
