@@ -90,6 +90,7 @@ export class AuthController {
         },
       });
     } catch (err) {
+      console.error('Login error:', err);
       next(err);
     }
   }

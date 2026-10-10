@@ -1,7 +1,16 @@
 import dotenv from 'dotenv';
 import path from 'path';
+import { existsSync } from 'fs';
 
-dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
+const envCandidates = [
+  path.resolve(process.cwd(), '.env'),
+  path.resolve(process.cwd(), '../.env'),
+  path.resolve(__dirname, '../../.env'),
+];
+const envPath = envCandidates.find((candidate) => existsSync(candidate));
+if (envPath) {
+  dotenv.config({ path: envPath });
+}
 dotenv.config();
 
 export interface Config {

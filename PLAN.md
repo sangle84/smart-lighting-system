@@ -12,7 +12,7 @@
 | # | Giai đoạn | Tài liệu tham chiếu | Status |
 |---|---|---|---|
 | 1 | Database & Schema | `docs/DATABASE.md` | Done |
-| 2 | Backend Core (Auth, RBAC) | `docs/API_SPEC.md` Phần A.1–A.2, `docs/PROJECT-RULES.md` mục 2, 8 | Not started |
+| 2 | Backend Core (Auth, RBAC) | `docs/API_SPEC.md` Phần A.1–A.2, `docs/PROJECT-RULES.md` mục 2, 8 | Done |
 | 3 | MQTT Integration | `docs/API_SPEC.md` Phần B, `docs/ARCHITECTURE.md` mục 6.3, 7 | Not started |
 | 4 | REST API (Devices, Commands, Alerts, Dashboard, Audit) | `docs/API_SPEC.md` Phần A.3–A.8 | Not started |
 | 5 | Socket.IO Realtime | `docs/API_SPEC.md` Phần C | Not started |
@@ -119,3 +119,4 @@ Done khi toàn bộ TC01–TC10 trong `docs/PRD.md` đã chạy ít nhất 1 l�
 | Ngày | Giai đoạn | Trạng thái mới | Bằng chứng | Loại evidence |
 | ---- | --------- | -------------- | --------- | -------------- |
 | 2026-10-10 | Giai đoạn 1 — Database & Schema | Done | PostgreSQL 18 chạy bằng Docker Compose trên host port tạm `55432`; migration `database/migrations/001_initial_schema.sql` chạy thành công, tạo đúng 8 bảng; seed `database/seeds/001_roles_and_admin.sql` tạo 3 role và 1 admin; smoke check CHECK liên trường của `command` và khóa kép `device_access` đều bị DB từ chối đúng thiết kế. | Docker/PostgreSQL runtime validation |
+| 2026-10-10 | Giai đoạn 2 — Backend Core (Auth, RBAC) | Done | `npm run typecheck` và `npm test` đạt; integration suite `backend/src/phase2.integration.test.ts` pass 6/6 cho login, refresh cookie, logout, đổi mật khẩu, JWT invalid/expired, JWT HS256 claims, Viewer nhận 403, và lỗi 400/404/409 đúng format. HTTP smoke test trên backend port `3100` với PostgreSQL Docker port `55432`: `/health`, `/auth/login`, `/auth/refresh` trả đúng 200; access token có `HS256`, `sub`, `role`, `iat`, `exp`; không lộ `password_hash`. | Automated integration tests + HTTP/Docker runtime validation |
