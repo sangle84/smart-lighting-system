@@ -656,52 +656,54 @@ Tối thiểu không được làm các control chính chỉ có icon mà không
 
 ---
 
-## 19. Visual Design
+## 19. Visual Design & Theme Guidelines (Blue + Gray)
 
-### 19.1 Status colors
+> **Hướng dẫn cho Agent:** Toàn bộ giao diện sử dụng giao diện sáng (Light mode, không cần Dark mode), phong cách kỹ thuật IoT hiện đại với bảng màu chủ đạo **Blue + Gray** (Tailwind CSS: `blue` + `slate`/`gray`).
 
-Mapping màu cụ thể cho:
+### 19.1 Color Palette & Theme Tokens
 
-- ONLINE
-- OFFLINE
-- FAULT
-- NEW
-- ACKNOWLEDGED
-- RESOLVED
+| Token | Tên màu / Mục đích | Tailwind CSS Classes | Hex Code |
+|---|---|---|---|
+| **Primary (Brand)** | Blue 600 (Nút bấm chính, active state, link, primary action) | `bg-blue-600 hover:bg-blue-700 text-white` | `#2563EB` |
+| **Primary Light** | Blue 50 / 100 (Background badge nhẹ, hover menu, row select) | `bg-blue-50 text-blue-700` | `#EFF6FF` / `#DBEAFE` |
+| **Primary Border** | Blue 200 / 300 (Border active, focus ring) | `border-blue-500 focus:ring-blue-500` | `#93C5FD` / `#3B82F6` |
+| **Base Background** | Slate 50 (Nền tổng thể toàn bộ trang) | `bg-slate-50` | `#F8FAFC` |
+| **Surface / Card** | White (Nền bảng, card nội dung, popup, modal) | `bg-white` | `#FFFFFF` |
+| **Border / Divider**| Slate 200 (Đường kẻ phân cách, viền card, viền input) | `border-slate-200` | `#E2E8F0` |
+| **Text Main** | Slate 900 (Tiêu đề, text chính, số liệu quan trọng) | `text-slate-900` | `#0F172A` |
+| **Text Muted** | Slate 600 (Nội dung mô tả, nhãn phụ, header bảng) | `text-slate-600` | `#475569` |
+| **Text Placeholder**| Slate 400 (Placeholder input, icon không active) | `text-slate-400` | `#94A3B8` |
 
-`TODO/UNDEFINED`
+### 19.2 Status & Alert Colors
 
-### 19.2 Typography
+Mapping màu trạng thái thiết bị và cảnh báo chuẩn hóa cho Agent:
 
-Font family, heading scale, body scale:
+| Trạng thái | Ý nghĩa | Tailwind CSS Classes (Badge / Indicator) | Hex tham chiếu |
+|---|---|---|---|
+| **ONLINE** | Thiết bị kết nối bình thường | `bg-emerald-50 text-emerald-700 border-emerald-200` / dot: `bg-emerald-500` | `#10B981` |
+| **OFFLINE** | Mất kết nối / Không phản hồi | `bg-slate-100 text-slate-700 border-slate-300` / dot: `bg-slate-400` | `#64748B` |
+| **FAULT** / **CRITICAL** | Sự cố đèn, quá dòng, lỗi phần cứng | `bg-rose-50 text-rose-700 border-rose-200` / dot: `bg-rose-500` | `#EF4444` |
+| **WARNING** / **NEW** | Cảnh báo mới phát sinh | `bg-amber-50 text-amber-700 border-amber-200` / dot: `bg-amber-500` | `#F59E0B` |
+| **ACKNOWLEDGED** | Cảnh báo đã được xác nhận tiếp nhận | `bg-blue-50 text-blue-700 border-blue-200` / dot: `bg-blue-500` | `#3B82F6` |
+| **RESOLVED** | Cảnh báo đã được xử lý xong | `bg-teal-50 text-teal-700 border-teal-200` / dot: `bg-teal-500` | `#14B8A6` |
 
-`TODO/UNDEFINED`
+### 19.3 Typography & Metrics
 
-### 19.3 Design tokens
+- **Font Family:** `Inter`, `system-ui`, `-apple-system`, `sans-serif`.
+- **Heading Scale:**
+  - Page Title: `text-2xl font-bold text-slate-900`
+  - Section / Card Title: `text-lg font-semibold text-slate-800`
+  - Subtitle / Label: `text-sm font-medium text-slate-700`
+- **Data & Telemetry Values:** `text-2xl` hoặc `text-3xl font-bold font-mono text-slate-900` kèm đơn vị `text-sm font-normal text-slate-500`.
 
-Color palette, spacing, radius, shadow, border:
+### 19.4 Component Library Guidelines cho Agent
 
-`TODO/UNDEFINED`
-
-### 19.4 Component library
-
-Các component dự kiến:
-
-- Button
-- Input
-- Select
-- Slider
-- Card
-- Badge
-- Table
-- Modal
-- Toast/Notification
-- Chart
-- Status indicator
-
-Style cụ thể:
-
-`TODO/UNDEFINED`
+- **Button Primary:** `px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg shadow-sm transition-colors disabled:opacity-50`
+- **Button Secondary / Outline:** `px-4 py-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 font-medium rounded-lg transition-colors`
+- **Card:** `bg-white border border-slate-200 rounded-xl shadow-sm p-5`
+- **Input / Select:** `w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm`
+- **Table:** Header `bg-slate-50 text-slate-600 text-xs font-semibold uppercase tracking-wider`; Row hover `hover:bg-slate-50/80 transition-colors`; Border `border-b border-slate-200`
+- **Slider (PWM Dimming):** Thanh trượt điều khiển độ sáng dùng màu Blue 600 `accent-blue-600`.
 
 ---
 
@@ -768,13 +770,13 @@ Các điểm hiện chưa được xác định đầy đủ:
 
 | Nội dung | Trạng thái |
 |---|---|
-| Visual identity / color palette | TODO/UNDEFINED |
-| Typography | TODO/UNDEFINED |
+| Visual identity / color palette | ĐÃ XÁC ĐỊNH: Theme Blue + Gray (Light mode, không dark mode) |
+| Typography | ĐÃ XÁC ĐỊNH: Inter/system-ui; Text Slate-900, Subtitle Slate-600 |
 | Exact sidebar/topbar layout | TODO/UNDEFINED |
 | Socket.IO JWT handshake mechanism | TODO/UNDEFINED |
 | Socket.IO room/broadcast scope | TODO/UNDEFINED |
 | Exact chart types/time ranges | TODO/UNDEFINED |
-| Exact control component for PWM | TODO/UNDEFINED |
+| Exact control component for PWM | ĐÃ XÁC ĐỊNH: Slider kèm input % (accent-blue-600) |
 | Alert toast/notification behavior | TODO/UNDEFINED |
 | Responsive breakpoints | TODO/UNDEFINED |
 | Detailed accessibility rules | TODO/UNDEFINED |
