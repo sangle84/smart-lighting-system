@@ -10,6 +10,9 @@ import { createUsersRoutes } from './routes/users.js';
 import { AuthController } from './controllers/auth.js';
 import { UserController } from './controllers/users.js';
 import { UserRepo } from './repositories/user.js';
+import { DeviceRepo } from './repositories/device.js';
+import { DeviceController } from './controllers/devices.js';
+import { createDeviceRoutes } from './routes/devices.js';
 
 // Database pool
 const pool = new Pool({
@@ -20,6 +23,7 @@ export function createApp(databasePool: Pool = pool): express.Express {
   const userRepo = new UserRepo(databasePool);
   const authController = new AuthController(userRepo);
   const userController = new UserController(userRepo);
+  const deviceController = new DeviceController(new DeviceRepo(databasePool));
   const app = express();
 
   app.use(cors({ origin: true, credentials: true }));
@@ -32,6 +36,7 @@ export function createApp(databasePool: Pool = pool): express.Express {
 
   app.use('/auth', createAuthRoutes(authController));
   app.use('/users', createUsersRoutes(userController));
+  app.use('/devices', createDeviceRoutes(deviceController));
 
   app.use(validationErrorHandler);
   app.use(notFoundHandler);
