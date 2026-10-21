@@ -16,6 +16,9 @@ import { createDeviceRoutes } from './routes/devices.js';
 import { OperationsRepo } from './repositories/operations.js';
 import { OperationsController } from './controllers/operations.js';
 import { createOperationsRoutes } from './routes/operations.js';
+import { CommandRepo } from './repositories/commands.js';
+import { CommandController } from './controllers/commands.js';
+import { createCommandRoutes } from './routes/commands.js';
 
 // Database pool
 const pool = new Pool({
@@ -28,6 +31,7 @@ export function createApp(databasePool: Pool = pool): express.Express {
   const userController = new UserController(userRepo);
   const deviceController = new DeviceController(new DeviceRepo(databasePool));
   const operationsController = new OperationsController(new OperationsRepo(databasePool));
+  const commandController = new CommandController(new CommandRepo(databasePool));
   const app = express();
 
   app.use(cors({ origin: true, credentials: true }));
@@ -42,6 +46,7 @@ export function createApp(databasePool: Pool = pool): express.Express {
   app.use('/users', createUsersRoutes(userController));
   app.use('/devices', createDeviceRoutes(deviceController));
   app.use(createOperationsRoutes(operationsController));
+  app.use(createCommandRoutes(commandController));
 
   app.use(validationErrorHandler);
   app.use(notFoundHandler);
