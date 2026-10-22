@@ -28,6 +28,8 @@ export interface Config {
   MQTT_PASSWORD?: string;
   MQTT_COMMAND_TIMEOUT_MS: number;
   MQTT_RETRY_DELAYS_MS: number[];
+  MQTT_HEARTBEAT_TIMEOUT_MS: number;
+  MQTT_HEARTBEAT_CHECK_INTERVAL_MS: number;
 }
 
 function parseExpiresIn(val: string | undefined, defaultVal: number): number {
@@ -62,6 +64,14 @@ export function loadConfig(): Config {
     MQTT_PASSWORD: process.env.MQTT_PASSWORD || undefined,
     MQTT_COMMAND_TIMEOUT_MS: parseExpiresIn(process.env.MQTT_COMMAND_TIMEOUT_MS, 5000),
     MQTT_RETRY_DELAYS_MS: [1000, 2000],
+    MQTT_HEARTBEAT_TIMEOUT_MS: parseExpiresIn(
+      process.env.MQTT_HEARTBEAT_TIMEOUT_MS,
+      30000
+    ),
+    MQTT_HEARTBEAT_CHECK_INTERVAL_MS: parseExpiresIn(
+      process.env.MQTT_HEARTBEAT_CHECK_INTERVAL_MS,
+      10000
+    ),
   };
 }
 
