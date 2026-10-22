@@ -37,12 +37,12 @@ interface AckPayload {
 interface PendingCommand {
   command: Command;
   resolve: (ack: AckPayload) => void;
-  reject: (error: Error) => void;
 }
 
 export class MqttService implements CommandPublisher {
   private client: MqttClient | null = null;
   private readonly pending = new Map<string, PendingCommand>();
+  private heartbeatMonitor: NodeJS.Timeout | null = null;
 
   constructor(
     private readonly pool: Pool,
@@ -66,6 +66,7 @@ export class MqttService implements CommandPublisher {
           if (error) console.error('MQTT subscription failed', error);
         }
       );
+      this.startHeartbeatMonitor();
     });
     this.client.on('message', (topic, payload) => {
       void this.handleMessage(topic, payload.toString()).catch((error: unknown) => {
@@ -96,7 +97,7 @@ export class MqttService implements CommandPublisher {
       for (let attempt = 0; attempt <= config.MQTT_RETRY_DELAYS_MS.length; attempt += 1) {
         await this.publishMessage(topic, payload);
         if (attempt === 0) await this.commandRepo.markSent(command.command_id);
-        const ack = await this.waitForAckAttempt(pending, command.command_id);
+        const ack = await this.waitForAckAttempt(pending);
         if (ack) {
           await this.commandRepo.updateResult(
             command.command_id,
@@ -124,6 +125,10 @@ export class MqttService implements CommandPublisher {
   }
 
   close(): void {
+    if (this.heartbeatMonitor) {
+      clearInterval(this.heartbeatMonitor);
+      this.heartbeatMonitor = null;
+    }
     this.client?.end();
     this.client = null;
   }
@@ -134,6 +139,7 @@ export class MqttService implements CommandPublisher {
     const [, topicDeviceId, kind] = match;
     const payload: unknown = JSON.parse(rawPayload);
     if (!this.isRecord(payload) || payload.device_id !== topicDeviceId) return;
+    if (!(await this.isDeviceAllowed(topicDeviceId))) return;
 
     if (kind === 'telemetry' && this.isTelemetry(payload)) {
       await this.pool.query(
@@ -160,8 +166,19 @@ export class MqttService implements CommandPublisher {
     }
     if (kind === 'ack' && this.isAck(payload)) {
       const waiting = this.pending.get(payload.command_id);
-      if (waiting) waiting.resolve(payload);
+      if (waiting?.command.device_id === topicDeviceId) waiting.resolve(payload);
     }
+  }
+
+  private async isDeviceAllowed(deviceId: string): Promise<boolean> {
+    const result = await this.pool.query<{ lifecycle_status: string }>(
+      `SELECT lifecycle_status
+       FROM device
+       WHERE device_id = $1`,
+      [deviceId]
+    );
+    const lifecycleStatus = result.rows[0]?.lifecycle_status;
+    return lifecycleStatus === 'PROVISIONED' || lifecycleStatus === 'ACTIVE';
   }
 
   private async markSeen(
@@ -171,36 +188,32 @@ export class MqttService implements CommandPublisher {
   ): Promise<void> {
     await this.pool.query(
       `UPDATE device
-       SET device_status = $1,
-           firmware_version = COALESCE($2, firmware_version),
+       SET device_status = $1::varchar,
+           firmware_version = COALESCE($2::varchar, firmware_version),
            last_seen_at = CURRENT_TIMESTAMP,
            lifecycle_status = CASE
-             WHEN lifecycle_status = 'PROVISIONED' AND $1 = 'ONLINE' THEN 'ACTIVE'
+             WHEN lifecycle_status = 'PROVISIONED' AND $1::varchar = 'ONLINE' THEN 'ACTIVE'
              ELSE lifecycle_status
            END,
            updated_at = CURRENT_TIMESTAMP
-       WHERE device_id = $3`,
+       WHERE device_id = $3::varchar`,
       [status, firmwareVersion ?? null, deviceId]
     );
   }
 
   private waitForAck(command: Command): Promise<AckPayload> {
-    return new Promise((resolve, reject) => {
-      this.pending.set(command.command_id, { command, resolve, reject });
+    return new Promise((resolve) => {
+      this.pending.set(command.command_id, { command, resolve });
     });
   }
 
   private waitForAckAttempt(
-    pendingPromise: Promise<AckPayload>,
-    commandId: string
+    pendingPromise: Promise<AckPayload>
   ): Promise<AckPayload | null> {
     return Promise.race([
       pendingPromise,
       this.sleep(config.MQTT_COMMAND_TIMEOUT_MS).then(() => null),
-    ]).then((ack) => {
-      if (ack) return ack;
-      return this.pending.has(commandId) ? null : null;
-    });
+    ]);
   }
 
   private publishMessage(topic: string, payload: string): Promise<void> {
@@ -223,11 +236,16 @@ export class MqttService implements CommandPublisher {
   private isTelemetry(value: Record<string, unknown>): value is TelemetryPayload {
     return (
       typeof value.timestamp === 'string' &&
+      !Number.isNaN(Date.parse(value.timestamp)) &&
       typeof value.lux === 'number' &&
+      Number.isFinite(value.lux) &&
       typeof value.motion === 'boolean' &&
       typeof value.voltage === 'number' &&
+      Number.isFinite(value.voltage) &&
       typeof value.current === 'number' &&
+      Number.isFinite(value.current) &&
       typeof value.power === 'number' &&
+      Number.isFinite(value.power) &&
       Number.isInteger(value.pwm) &&
       Number(value.pwm) >= 0 &&
       Number(value.pwm) <= 100
@@ -237,6 +255,7 @@ export class MqttService implements CommandPublisher {
   private isStatus(value: Record<string, unknown>): value is StatusPayload {
     return (
       typeof value.timestamp === 'string' &&
+      !Number.isNaN(Date.parse(value.timestamp)) &&
       (value.status === 'ONLINE' || value.status === 'OFFLINE' || value.status === 'FAULT')
     );
   }
@@ -245,9 +264,49 @@ export class MqttService implements CommandPublisher {
     return (
       typeof value.command_id === 'string' &&
       typeof value.timestamp === 'string' &&
+      !Number.isNaN(Date.parse(value.timestamp)) &&
       typeof value.status === 'string' &&
       ACK_STATUS.has(value.status)
     );
+  }
+
+  private startHeartbeatMonitor(): void {
+    if (this.heartbeatMonitor) return;
+    this.heartbeatMonitor = setInterval(() => {
+      void this.markOfflineDevices().catch((error: unknown) => {
+        console.error('MQTT heartbeat monitor failed', error);
+      });
+    }, config.MQTT_HEARTBEAT_CHECK_INTERVAL_MS);
+  }
+
+  private async markOfflineDevices(): Promise<void> {
+    const result = await this.pool.query<{ device_id: string }>(
+      `UPDATE device
+       SET device_status = 'OFFLINE',
+           updated_at = CURRENT_TIMESTAMP
+       WHERE lifecycle_status = 'ACTIVE'
+         AND device_status <> 'OFFLINE'
+         AND (
+           last_seen_at IS NULL
+           OR last_seen_at < CURRENT_TIMESTAMP - ($1 * INTERVAL '1 millisecond')
+         )
+       RETURNING device_id`,
+      [config.MQTT_HEARTBEAT_TIMEOUT_MS]
+    );
+
+    for (const row of result.rows) {
+      await this.pool.query(
+        `INSERT INTO alert (device_id, alert_type, severity, message)
+         SELECT $1::varchar, 'DEVICE_OFFLINE', 'HIGH', 'Thiết bị không gửi heartbeat quá thời hạn'
+         WHERE NOT EXISTS (
+           SELECT 1 FROM alert
+           WHERE device_id = $1::varchar
+             AND alert_type = 'DEVICE_OFFLINE'
+             AND status IN ('NEW', 'ACKNOWLEDGED')
+         )`,
+        [row.device_id]
+      );
+    }
   }
 
   private sleep(milliseconds: number): Promise<void> {
