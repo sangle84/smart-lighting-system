@@ -2,6 +2,7 @@ import mqtt, { MqttClient } from 'mqtt';
 import { Pool } from 'pg';
 import { config } from '../config/env.js';
 import { Command, CommandPublisher, CommandRepo } from '../repositories/commands.js';
+import type { RealtimeGateway } from '../realtime/gateway.js';
 
 const TOPIC_PREFIX = 'iot/device/';
 const ACK_STATUS = new Set(['ACKNOWLEDGED', 'REJECTED', 'EXECUTION_FAILED']);
@@ -43,11 +44,16 @@ export class MqttService implements CommandPublisher {
   private client: MqttClient | null = null;
   private readonly pending = new Map<string, PendingCommand>();
   private heartbeatMonitor: NodeJS.Timeout | null = null;
+  private realtime?: RealtimeGateway;
 
   constructor(
     private readonly pool: Pool,
-    private readonly commandRepo: CommandRepo
+    private readonly commandRepo: CommandRepo,
   ) {}
+
+  setRealtimeGateway(realtime: RealtimeGateway): void {
+    this.realtime = realtime;
+  }
 
   connect(): void {
     this.client = mqtt.connect(config.MQTT_URL, {
@@ -157,16 +163,21 @@ export class MqttService implements CommandPublisher {
           payload.pwm,
         ]
       );
+      this.realtime?.emitDeviceEvent('telemetry:update', payload.device_id, payload);
       await this.markSeen(payload.device_id, 'ONLINE');
       return;
     }
     if (kind === 'status' && this.isStatus(payload)) {
+      this.realtime?.emitDeviceEvent('device:status', payload.device_id, payload);
       await this.markSeen(payload.device_id, payload.status, payload.firmware_version);
       return;
     }
     if (kind === 'ack' && this.isAck(payload)) {
       const waiting = this.pending.get(payload.command_id);
-      if (waiting?.command.device_id === topicDeviceId) waiting.resolve(payload);
+      if (waiting?.command.device_id === topicDeviceId) {
+        waiting.resolve(payload);
+        this.realtime?.emitDeviceEvent('command:update', topicDeviceId, payload);
+      }
     }
   }
 
@@ -306,6 +317,11 @@ export class MqttService implements CommandPublisher {
          )`,
         [row.device_id]
       );
+      this.realtime?.emitDeviceEvent('alert:new', row.device_id, {
+        device_id: row.device_id,
+        alert_type: 'DEVICE_OFFLINE',
+        severity: 'HIGH',
+      });
     }
   }
 
