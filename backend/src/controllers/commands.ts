@@ -60,12 +60,9 @@ export class CommandController {
       });
 
       if (this.publisher) {
-        try {
-          await this.publisher.publish(command);
-        } catch (error) {
-          next(error);
-          return;
-        }
+        void this.publisher.publish(command).catch((error: unknown) => {
+          console.error(`Command publish failed: ${command.command_id}`, error);
+        });
       }
 
       res.status(202).json(command);

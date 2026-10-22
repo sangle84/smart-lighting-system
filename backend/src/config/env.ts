@@ -22,6 +22,12 @@ export interface Config {
   REFRESH_TOKEN_EXPIRES_IN: number;
   COOKIE_SECURE: boolean;
   COOKIE_SAME_SITE: 'strict' | 'lax' | 'none';
+  MQTT_URL: string;
+  MQTT_CLIENT_ID: string;
+  MQTT_USERNAME?: string;
+  MQTT_PASSWORD?: string;
+  MQTT_COMMAND_TIMEOUT_MS: number;
+  MQTT_RETRY_DELAYS_MS: number[];
 }
 
 function parseExpiresIn(val: string | undefined, defaultVal: number): number {
@@ -50,6 +56,12 @@ export function loadConfig(): Config {
     REFRESH_TOKEN_EXPIRES_IN: parseExpiresIn(process.env.REFRESH_TOKEN_EXPIRES_IN, 604800),
     COOKIE_SECURE: process.env.COOKIE_SECURE === 'true' || process.env.NODE_ENV === 'production',
     COOKIE_SAME_SITE: (process.env.COOKIE_SAME_SITE as 'strict' | 'lax' | 'none') || 'strict',
+    MQTT_URL: process.env.MQTT_URL || 'mqtt://localhost:1883',
+    MQTT_CLIENT_ID: process.env.MQTT_CLIENT_ID || 'smart-lighting-backend',
+    MQTT_USERNAME: process.env.MQTT_USERNAME || undefined,
+    MQTT_PASSWORD: process.env.MQTT_PASSWORD || undefined,
+    MQTT_COMMAND_TIMEOUT_MS: parseExpiresIn(process.env.MQTT_COMMAND_TIMEOUT_MS, 5000),
+    MQTT_RETRY_DELAYS_MS: [1000, 2000],
   };
 }
 

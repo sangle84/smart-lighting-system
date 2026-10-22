@@ -96,5 +96,42 @@ export class CommandRepo {
     } finally {
       client.release();
     }
+
+  }
+
+  async markSent(commandId: string): Promise<void> {
+    await this.pool.query(
+      `UPDATE command SET status = 'SENT'
+       WHERE command_id = $1 AND status = 'PENDING'`,
+      [commandId]
+    );
+  }
+
+  async findById(commandId: string): Promise<Command | null> {
+    const result = await this.pool.query<Command>(
+      `SELECT command_id, device_id, user_id, command_type, command_value,
+              status, sent_at, ack_at, result
+       FROM command WHERE command_id = $1`,
+      [commandId]
+    );
+    return result.rows[0] ?? null;
+  }
+
+  async updateResult(
+    commandId: string,
+    status: 'ACKNOWLEDGED' | 'FAILED' | 'TIMEOUT',
+    result: string | null
+  ): Promise<Command | null> {
+    const query = status === 'ACKNOWLEDGED'
+      ? `UPDATE command SET status = $1, result = $2, ack_at = CURRENT_TIMESTAMP
+         WHERE command_id = $3 AND status IN ('PENDING', 'SENT')
+         RETURNING command_id, device_id, user_id, command_type, command_value,
+                   status, sent_at, ack_at, result`
+      : `UPDATE command SET status = $1, result = $2
+         WHERE command_id = $3 AND status IN ('PENDING', 'SENT')
+         RETURNING command_id, device_id, user_id, command_type, command_value,
+                   status, sent_at, ack_at, result`;
+    const updated = await this.pool.query<Command>(query, [status, result, commandId]);
+    return updated.rows[0] ?? null;
   }
 }
