@@ -20,6 +20,7 @@ import { CommandPublisher, CommandRepo } from './repositories/commands.js';
 import { CommandController } from './controllers/commands.js';
 import { createCommandRoutes } from './routes/commands.js';
 import { MqttService } from './mqtt/service.js';
+import { RealtimeGateway } from './realtime/gateway.js';
 
 // Database pool
 const pool = new Pool({
@@ -62,16 +63,18 @@ export function createApp(
 
 if (require.main === module) {
   const mqttService = new MqttService(pool, new CommandRepo(pool));
-  mqttService.connect();
   const app = createApp(pool, mqttService);
   const server = app.listen(config.PORT, () => {
     console.log(`Backend running on port ${config.PORT}`);
   });
+  const realtime = new RealtimeGateway(pool, server);
+  mqttService.setRealtimeGateway(realtime);
+  mqttService.connect();
 
   const shutdown = (): void => {
     server.close(() => {
     mqttService.close();
-    void pool.end().then(() => process.exit(0));
+    void realtime.close().then(() => pool.end()).then(() => process.exit(0));
     });
   };
 
