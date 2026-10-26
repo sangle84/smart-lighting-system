@@ -961,11 +961,11 @@ Payload của cả 4 event đều tái dùng đúng schema JSON đã định ngh
 
 ### C.2 Scope
 
-**[ĐÃ BỔ SUNG]** Mỗi thiết bị tương ứng một room `device:{device_id}`. Sau khi xác thực JWT, server cho socket vào room của các thiết bị user được phép truy cập (Admin: tất cả). Mọi event chỉ emit tới room của thiết bị liên quan. Khi `PUT /devices/:id/access` thay đổi quyền, server cập nhật room của user bị ảnh hưởng. Cách kiểm tra lại quyền khi access token hết hạn trong phiên socket: **TODO/UNDEFINED**.
+**[ĐÃ BỔ SUNG]** Mỗi thiết bị tương ứng một room `device:{device_id}`. Sau khi xác thực JWT, server cho socket vào room của các thiết bị user được phép truy cập (Admin: tất cả). Mọi event chỉ emit tới room của thiết bị liên quan. Khi `PUT /devices/:id/access` thay đổi quyền, server tính lại room cho các socket đang kết nối, áp dụng cả quyền mới cấp và quyền vừa thu hồi. Khi access token hết hạn, server ngắt socket; client phải refresh token qua REST rồi kết nối lại để được xác thực và cấp room mới.
 
 ### C.3 Authentication
 
-Chỉ **client đã xác thực** (có JWT access token hợp lệ) mới được phép kết nối Socket.IO và nhận các event trên. Cơ chế xác thực cụ thể (middleware handshake, truyền token qua query/header...) là chi tiết implementation: **TODO/UNDEFINED**, cần chốt khi triển khai. Hành vi bắt buộc: client không có JWT hợp lệ phải bị từ chối kết nối.
+Chỉ **client đã xác thực** (có JWT access token hợp lệ) mới được phép kết nối Socket.IO và nhận các event trên. Backend nhận token từ `handshake.auth.token` hoặc header `Authorization: Bearer <token>`, xác minh bằng JWT secret của backend và từ chối handshake nếu token thiếu, sai hoặc hết hạn với lỗi `UNAUTHORIZED`.
 
 ### C.4 Độ tin cậy
 
