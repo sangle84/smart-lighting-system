@@ -11,6 +11,7 @@ import {
   LifecycleStatus,
   RoleName,
 } from '../repositories/device.js';
+import type { RealtimeGateway } from '../realtime/gateway.js';
 
 const deviceStatuses: DeviceStatus[] = ['ONLINE', 'OFFLINE', 'FAULT'];
 const lifecycleStatuses: LifecycleStatus[] = [
@@ -22,7 +23,13 @@ const lifecycleStatuses: LifecycleStatus[] = [
 ];
 
 export class DeviceController {
+  private realtimeGateway?: RealtimeGateway;
+
   constructor(private readonly deviceRepo: DeviceRepo) {}
+
+  setRealtimeGateway(realtimeGateway: RealtimeGateway): void {
+    this.realtimeGateway = realtimeGateway;
+  }
 
   async list(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
     try {
@@ -194,6 +201,7 @@ export class DeviceController {
       if (users.length !== userIds.length) {
         throw new AppError(ErrorCode.INTERNAL_ERROR, 'Không thể đồng bộ quyền thiết bị');
       }
+      await this.realtimeGateway?.refreshRooms();
       res.json({ device_id: req.params.id, users });
     } catch (error) {
       next(error);

@@ -1,4 +1,14 @@
 services:
+  mosquitto:
+    image: eclipse-mosquitto:2
+    restart: unless-stopped
+    ports:
+      - "${MQTT_PORT:-1883}:1883"
+    volumes:
+      - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - mosquitto_data:/mosquitto/data
+      - mosquitto_log:/mosquitto/log
+
   postgres:
     image: postgres:18
     restart: unless-stopped
@@ -19,4 +29,6 @@ services:
       retries: 10
 
 volumes:
+  mosquitto_data:
+  mosquitto_log:
   postgres_data:
