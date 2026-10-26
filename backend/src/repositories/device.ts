@@ -98,7 +98,7 @@ export class DeviceRepo {
       const scoped = accessClause(role, userId, 'd.device_id');
       if (scoped.sql) {
         values.push(...scoped.values);
-        clauses.push(scoped.sql.replace('$1', `$${values.length}`));
+        clauses.push(scoped.sql.replace(/^AND\s+/, '').replace('$1', `$${values.length}`));
       }
       if (filters.status) {
         values.push(filters.status);
