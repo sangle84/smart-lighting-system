@@ -40,6 +40,10 @@ export function createApp(
   const commandController = new CommandController(commandRepo, commandPublisher);
   const app = express();
 
+  app.locals.setRealtimeGateway = (gateway: RealtimeGateway): void => {
+    deviceController.setRealtimeGateway(gateway);
+  };
+
   app.use(cors({ origin: true, credentials: true }));
   app.use(express.json());
   app.use(cookieParser());
@@ -68,6 +72,7 @@ if (require.main === module) {
     console.log(`Backend running on port ${config.PORT}`);
   });
   const realtime = new RealtimeGateway(pool, server);
+  app.locals.setRealtimeGateway(realtime);
   mqttService.setRealtimeGateway(realtime);
   mqttService.connect();
 

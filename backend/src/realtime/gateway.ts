@@ -11,6 +11,17 @@ export type RealtimeEvent =
 
 interface AuthenticatedSocket extends Socket {
   user?: JwtPayload;
+  tokenExpiryTimer?: NodeJS.Timeout;
+  data: {
+    user?: JwtPayload;
+  };
+}
+
+interface AuthorizedRoomSocket {
+  data: {
+    user?: JwtPayload;
+  };
+  join(room: string): Promise<void> | void;
 }
 
 export class RealtimeGateway {
@@ -27,16 +38,25 @@ export class RealtimeGateway {
         return;
       }
       try {
-        (socket as AuthenticatedSocket).user = verifyToken(token);
+        const user = verifyToken(token);
+        (socket as AuthenticatedSocket).user = user;
+        socket.data.user = user;
         next();
       } catch {
         next(new Error('UNAUTHORIZED'));
       }
     });
     this.io.on('connection', (socket) => {
-      void this.joinAuthorizedRooms(socket as AuthenticatedSocket).catch((error: unknown) => {
+      const authenticatedSocket = socket as AuthenticatedSocket;
+      this.scheduleTokenExpiry(authenticatedSocket);
+      void this.joinAuthorizedRooms(authenticatedSocket).catch((error: unknown) => {
         console.error('Socket room authorization failed', error);
         socket.disconnect(true);
+      });
+      socket.on('disconnect', () => {
+        if (authenticatedSocket.tokenExpiryTimer) {
+          clearTimeout(authenticatedSocket.tokenExpiryTimer);
+        }
       });
     });
   }
@@ -53,6 +73,21 @@ export class RealtimeGateway {
     return new Promise((resolve) => this.io.close(() => resolve()));
   }
 
+  async refreshRooms(): Promise<void> {
+    const sockets = await this.io.fetchSockets();
+    await Promise.all(
+      sockets
+        .map(async (socket) => {
+          for (const room of socket.rooms) {
+            if (room.startsWith('device:')) {
+              await socket.leave(room);
+            }
+          }
+          await this.joinAuthorizedRooms(socket);
+        })
+    );
+  }
+
   private extractToken(socket: Socket): string | undefined {
     const authToken = socket.handshake.auth?.token;
     if (typeof authToken === 'string') return authToken.replace(/^Bearer\s+/i, '');
@@ -63,8 +98,8 @@ export class RealtimeGateway {
     return undefined;
   }
 
-  private async joinAuthorizedRooms(socket: AuthenticatedSocket): Promise<void> {
-    const user = socket.user;
+  private async joinAuthorizedRooms(socket: AuthorizedRoomSocket): Promise<void> {
+    const user = socket.data.user;
     if (!user) throw new Error('Missing authenticated user');
     const devices =
       user.role === 'ADMIN'
@@ -76,5 +111,13 @@ export class RealtimeGateway {
     for (const device of devices.rows) {
       await socket.join(`device:${device.device_id}`);
     }
+  }
+
+  private scheduleTokenExpiry(socket: AuthenticatedSocket): void {
+    const expiresAt = socket.user?.exp;
+    if (!expiresAt) return;
+
+    const delay = Math.max(expiresAt * 1000 - Date.now(), 0);
+    socket.tokenExpiryTimer = setTimeout(() => socket.disconnect(true), delay);
   }
 }
