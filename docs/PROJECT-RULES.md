@@ -88,41 +88,12 @@
 - Không commit secret dưới bất kỳ hình thức nào.
 - Commit phải tập trung vào một thay đổi rõ ràng (tránh commit gộp nhiều việc không liên quan).
 - Không thêm trailer `Co-authored-by: Copilot` hoặc trailer nhận Copilot làm author/contributor. Trước khi push, phải kiểm tra commit message để bảo đảm GitHub chỉ ghi nhận thành viên thực hiện.
+- Sau mỗi task hoàn thành, agent phải đề xuất commit message theo format `<type>: <mô tả ngắn>`; trước khi commit hoặc push phải kiểm tra toàn bộ message và trailer để loại bỏ `Co-authored-by` hoặc bất kỳ thông tin nào nhận diện agent tự thêm vào commit.
 - Không sửa lịch sử Git (force push, rebase lịch sử đã chia sẻ...) nếu không được yêu cầu rõ ràng.
 - Quy ước đặt tên commit message: **[ĐÃ BỔ SUNG]** Định dạng commit message: `<type>: <mô tả ngắn>` (không dùng scope). Ví dụ: `feat: add telemetry ingestion handler`, `fix: fix reconnection logic`, `docs: update MQTT payload spec`. Các type hợp lệ: `feat`, `fix`, `docs`, `refactor`, `test`, `chore`.
   - *Lý do/Rationale:* Cần thống nhất quy ước commit ngay từ đầu để giữ lịch sử Git rõ ràng và hỗ trợ sinh changelog tự động.
 
-### Agent tự động commit (không push) [ĐÃ BỔ SUNG]
 
-AI coding agent **được phép và nên tự commit local** sau khi hoàn thành một thay đổi; agent **không được push**.
-
-**Khi nào commit:**
-- Sau khi hoàn thành một thay đổi có ý nghĩa trọn vẹn **và** đã kiểm tra phần bị ảnh hưởng (xem mục 10). Không commit code chưa chạy, build/test đang lỗi, hoặc đang làm dở.
-- Mỗi commit là **một thay đổi logic duy nhất**. Task gồm nhiều việc không liên quan thì tách thành nhiều commit.
-- Thay đổi code và cập nhật tài liệu tương ứng (mục 11) nằm **cùng một commit**.
-- Cập nhật `PLAN.md` chỉ khi có bằng chứng cụ thể (xem `AGENTS.md` mục 4); nếu cập nhật riêng thì dùng commit `docs: ...` riêng (ví dụ `docs: update PLAN progress for phase 1`), kèm bằng chứng trong nhật ký.
-
-**Trước khi commit, agent phải:**
-1. Chạy `git status` và `git diff` để xem chính xác những gì sẽ được commit.
-2. Chỉ `git add` **các file cụ thể** thuộc thay đổi hiện tại; không dùng `git add -A` / `git add .` một cách mù quáng.
-3. Kiểm tra không có secret hoặc file không được commit: `.env`, `device_key`, mật khẩu, JWT secret, credential, `node_modules`, thư mục build, file log.
-4. Nếu thấy secret đã nằm trong diff: **dừng**, không commit, báo cho người dùng.
-
-**Cách commit:**
-- Message theo đúng định dạng ở trên: `<type>: <mô tả ngắn>` (không có scope). Mô tả ngắn gọn, nêu rõ thay đổi gì; phần thân (nếu cần) ghi thêm thành phần bị ảnh hưởng.
-- Dòng đầu ngắn gọn; phần thân (nếu cần) nêu lý do thay đổi và cách đã kiểm tra. Không ghi "test passed" nếu chưa thực sự chạy (xem mục 10).
-- Commit trên **nhánh hiện tại**. Không tự tạo, chuyển, merge hoặc xóa nhánh nếu không được yêu cầu.
-
-**Agent KHÔNG được làm:**
-- `git push` (kể cả `--force`), `git push --tags`, hoặc bất kỳ thao tác nào ghi lên remote.
-- Tạo/đẩy tag hoặc release (ví dụ `v1.0.0`) — việc này do nhóm quyết định.
-- Sửa lịch sử: `git commit --amend` lên commit đã có từ trước, `git rebase`, `git reset --hard`, `git filter-branch`, và tương tự.
-- Bỏ qua hook hoặc kiểm tra: `--no-verify`, `--no-gpg-sign`.
-- Thay đổi cấu hình Git (`git config`), remote, hoặc `.gitignore` để vượt qua kiểm tra.
-
-**Sau khi commit:** agent báo lại cho người dùng hash ngắn, message, danh sách file đã thay đổi, và nhắc rằng commit **chưa được push**. Người dùng tự xem lại (`git log`, `git show`) rồi tự push.
-
-*Lý do/Rationale:* commit local thường xuyên giúp mỗi thay đổi nhỏ, dễ xem lại và dễ hoàn tác; việc push, tag và release là điểm kiểm soát cuối cùng thuộc về người trong nhóm, đặc biệt vì đồ án cần lịch sử commit rõ ràng của từng thành viên.
 
 ## 10. Testing Rules
 
@@ -146,3 +117,17 @@ Nếu thay đổi:
 - **Requirement** → cập nhật `PRD.md`.
 
 Thay đổi code và cập nhật tài liệu tương ứng nên nằm trong cùng một thay đổi (cùng PR/commit liên quan), để tránh tài liệu bị lệch khỏi thực tế implementation.
+
+## Git Commit & Push Rules
+
+- Agent không được tự động thực hiện `git commit`, `git push`, `git merge` hoặc `git rebase`.
+- Agent chỉ được thay đổi mã nguồn, tài liệu và các file thuộc phạm vi task được giao.
+- Sau khi hoàn thành task, agent phải báo cáo:
+  - Danh sách file đã thay đổi.
+  - Nội dung thay đổi chính.
+  - Kết quả kiểm thử thực tế.
+  - Commit message đề xuất.
+- Việc staging, commit và push do người dùng thực hiện.
+- Không thêm trailer `Co-authored-by: Copilot` hoặc bất kỳ thông tin nào nhận diện agent là tác giả hoặc đồng tác giả commit.
+- Trước khi commit, người dùng cần kiểm tra `git status`, `git diff --cached` và commit message.
+- Không tự ý sửa lịch sử Git đã chia sẻ hoặc force push nếu không có yêu cầu rõ ràng từ người dùng.
