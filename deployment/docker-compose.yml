@@ -2,10 +2,28 @@ services:
   mosquitto:
     image: eclipse-mosquitto:2
     restart: unless-stopped
+    environment:
+      MQTT_BACKEND_PASSWORD: ${MQTT_BACKEND_PASSWORD:?MQTT_BACKEND_PASSWORD must be set in .env}
+      MQTT_LIGHT001_PASSWORD: ${MQTT_LIGHT001_PASSWORD:?MQTT_LIGHT001_PASSWORD must be set in .env}
+      MQTT_LIGHT002_PASSWORD: ${MQTT_LIGHT002_PASSWORD:?MQTT_LIGHT002_PASSWORD must be set in .env}
+    command:
+      - /bin/sh
+      - -c
+      - >-
+        rm -f /mosquitto/data/passwordfile &&
+        mosquitto_passwd -b -c /mosquitto/data/passwordfile smart-lighting-backend
+        "$$MQTT_BACKEND_PASSWORD" &&
+        mosquitto_passwd -b /mosquitto/data/passwordfile LIGHT-001
+        "$$MQTT_LIGHT001_PASSWORD" &&
+        mosquitto_passwd -b /mosquitto/data/passwordfile LIGHT-002
+        "$$MQTT_LIGHT002_PASSWORD" &&
+        chown mosquitto:mosquitto /mosquitto/data/passwordfile &&
+        exec mosquitto -c /mosquitto/config/mosquitto.conf
     ports:
       - "${MQTT_PORT:-1883}:1883"
     volumes:
       - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - ./mosquitto/aclfile:/mosquitto/config/aclfile:ro
       - mosquitto_data:/mosquitto/data
       - mosquitto_log:/mosquitto/log
 

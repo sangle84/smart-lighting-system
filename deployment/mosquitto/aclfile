@@ -1,0 +1,19 @@
+user smart-lighting-backend
+topic read iot/device/+/telemetry
+topic read iot/device/+/status
+topic read iot/device/+/ack
+topic write iot/device/+/command
+
+user LIGHT-001
+topic read iot/device/LIGHT-001/command
+topic read iot/device/LIGHT-001/config
+topic write iot/device/LIGHT-001/telemetry
+topic write iot/device/LIGHT-001/status
+topic write iot/device/LIGHT-001/ack
+
+user LIGHT-002
+topic read iot/device/LIGHT-002/command
+topic read iot/device/LIGHT-002/config
+topic write iot/device/LIGHT-002/telemetry
+topic write iot/device/LIGHT-002/status
+topic write iot/device/LIGHT-002/ack
