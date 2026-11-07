@@ -23,9 +23,13 @@ Thumbs.db
 
 # IDE / editor folders
 .vscode/
+firmware/.vscode/
 .idea/
 *.sublime-workspace
 *.sublime-project
+
+# PlatformIO
+firmware/.pio/
 
 # Miscellaneous
 coverage/
