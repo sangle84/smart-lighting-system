@@ -1,4 +1,5 @@
 \set ON_ERROR_STOP on
+\getenv seed_admin_password SEED_ADMIN_PASSWORD
 
 INSERT INTO role (role_name, description)
 VALUES
@@ -7,12 +8,12 @@ VALUES
     ('VIEWER', 'Người giám sát')
 ON CONFLICT (role_name) DO NOTHING;
 
-\if :{?SEED_ADMIN_PASSWORD}
+\if :{?seed_admin_password}
     INSERT INTO users (username, email, password_hash, role_id)
     SELECT
         'admin',
         'admin@smartlighting.local',
-        crypt(:'SEED_ADMIN_PASSWORD', gen_salt('bf', 10)),
+        crypt(:'seed_admin_password', gen_salt('bf', 10)),
         role_id
     FROM role
     WHERE role_name = 'ADMIN'
