@@ -78,9 +78,9 @@ Khi nhận một task, agent thực hiện theo thứ tự:
 9. Kiểm tra/test phần bị ảnh hưởng sau khi thay đổi (xem `docs/PROJECT-RULES.md` mục Testing Rules).
 10. Nếu thay đổi làm ảnh hưởng đến API, database hoặc architecture, **cập nhật tài liệu tương ứng** trong cùng lần thay đổi.
 11. Nếu thay đổi trạng thái triển khai, cập nhật `PLAN.md` **chỉ khi có bằng chứng cụ thể**; không đánh dấu `Done` chỉ vì đã yêu cầu agent thực hiện hoặc vì agent tự báo cáo đã xong.
-12. Sau khi hoàn thành và đã kiểm tra, **tự commit local** theo `docs/PROJECT-RULES.md` mục 9 (mục "Agent tự động commit"): một thay đổi logic một commit, chỉ add file cụ thể, không commit secret. Nếu cần chia sẻ hoặc review, có thể `git push` lên remote theo nhánh hiện tại (`Sang` hoặc `Thinh`) nhưng **không push trực tiếp lên `main`**; không tạo tag, không sửa lịch sử Git; báo lại cho người dùng hash và nội dung commit để họ tự push.
-13. Không thêm `Co-authored-by: Copilot` hoặc bất kỳ trailer nào nhận Copilot làm author/contributor. Commit phải được ghi nhận dưới tài khoản thành viên đang làm việc; kiểm tra phần cuối commit message trước khi push.
-14. Sau mỗi task hoàn thành, agent phải đề xuất một commit message theo format `<type>: <mô tả ngắn>` và kiểm tra commit message/trailer để bảo đảm không có `Co-authored-by` hoặc thông tin nhận diện agent tự thêm vào commit.
+12. Sau khi hoàn thành và đã kiểm tra, **tuyệt đối không tự động commit hay push** (tuân thủ `docs/PROJECT-RULES.md` mục Git Commit & Push Rules). Mọi thao tác `git add`, `git commit`, `git push` đều do người dùng tự thực hiện sau khi kiểm tra.
+13. Không thêm `Co-authored-by: Copilot` hoặc bất kỳ trailer nào nhận Copilot/Agent làm author/contributor. Commit phải được ghi nhận dưới tài khoản thành viên đang làm việc.
+14. Sau mỗi task hoàn thành, agent phải báo cáo danh sách file thay đổi, kết quả kiểm thử và đề xuất commit message theo format `<type>: <mô tả ngắn>` để người dùng tự review và commit.
 
 ## 5. Source of Truth
 
@@ -100,7 +100,7 @@ Khi có mâu thuẫn thông tin, agent ưu tiên theo thứ tự sau:
 
 ## 6. Important Constraints
 
-- Agent được tự commit local nhưng **không bao giờ tự push** hoặc tạo tag/release (xem `docs/PROJECT-RULES.md` mục 9).
+- **Agent tuyệt đối không tự động chạy `git commit`, `git push`, `git merge`, `git rebase` hay tạo tag/release** (tuân thủ `docs/PROJECT-RULES.md` mục Git Commit & Push Rules). Mọi thao tác này do người dùng trực tiếp thực hiện.
 - Mọi thay đổi code phải bắt đầu từ đúng nhánh của owner. Chỉ dùng 2 nhánh chính: `Sang` và `Thinh`. Không được code trực tiếp lên `main`.
 - Nếu branch hiện tại không khớp với owner đang làm hoặc đang ở `main`, agent phải tạo nhánh mới trước khi chỉnh file. Đây là quy tắc bắt buộc để tránh xung đột và đảm bảo trách nhiệm cá nhân rõ ràng.
 - Trước khi bắt đầu task, agent phải pull/fetch code mới nhất của branch hiện tại hoặc rebase nếu đang có thay đổi cũ; không làm việc trên snapshot quá cũ so với repo.

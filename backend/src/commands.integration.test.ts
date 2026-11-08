@@ -10,13 +10,18 @@ describe('command REST API', () => {
   const deviceId = `CMD-${Date.now()}`;
   const username = `operator-${Date.now()}`;
   let userId = '';
+  let viewerId = '';
   let adminToken = '';
   let operatorToken = '';
+  let viewerToken = '';
   let commandId = '';
 
   beforeAll(async () => {
     const role = await pool.query<{ role_id: number }>(
       "SELECT role_id FROM role WHERE role_name = 'OPERATOR'"
+    );
+    const viewerRole = await pool.query<{ role_id: number }>(
+      "SELECT role_id FROM role WHERE role_name = 'VIEWER'"
     );
     const user = await pool.query<{ user_id: string }>(
       `INSERT INTO users (username, email, password_hash, role_id)
@@ -30,6 +35,19 @@ describe('command REST API', () => {
     );
     userId = user.rows[0].user_id;
 
+    const viewerUsername = `cmd-viewer-${Date.now()}`;
+    const viewerUser = await pool.query<{ user_id: string }>(
+      `INSERT INTO users (username, email, password_hash, role_id)
+       VALUES ($1, $2, $3, $4) RETURNING user_id`,
+      [
+        viewerUsername,
+        `${viewerUsername}@example.local`,
+        await bcrypt.hash('ViewerPass123', 10),
+        viewerRole.rows[0].role_id,
+      ]
+    );
+    viewerId = viewerUser.rows[0].user_id;
+
     const admin = await request(app)
       .post('/auth/login')
       .send({ username: 'admin', password: 'AdminPass123' })
@@ -40,6 +58,11 @@ describe('command REST API', () => {
       .send({ username, password: 'OperatorPass123' })
       .expect(200);
     operatorToken = operator.body.access_token;
+    const viewer = await request(app)
+      .post('/auth/login')
+      .send({ username: viewerUsername, password: 'ViewerPass123' })
+      .expect(200);
+    viewerToken = viewer.body.access_token;
 
     await pool.query(
       `INSERT INTO device (device_id, device_name, device_status, lifecycle_status, credential_hash)
@@ -58,6 +81,7 @@ describe('command REST API', () => {
     await pool.query('DELETE FROM device_access WHERE device_id = $1', [deviceId]);
     await pool.query('DELETE FROM device WHERE device_id = $1', [deviceId]);
     await pool.query('DELETE FROM users WHERE user_id = $1', [userId]);
+    await pool.query('DELETE FROM users WHERE user_id = $1', [viewerId]);
   });
 
   it('creates a PWM command for an allowed Operator and writes audit log', async () => {
@@ -109,5 +133,31 @@ describe('command REST API', () => {
       .expect(({ body }) => {
         expect(body.code).toBe('DEVICE_NOT_AVAILABLE');
       });
+  });
+
+  it('rejects commands with 403 for Viewer (TC09)', async () => {
+    await request(app)
+      .post(`/devices/${deviceId}/commands`)
+      .set('Authorization', `Bearer ${viewerToken}`)
+      .send({ command_type: 'ON' })
+      .expect(403);
+  });
+
+  it('rejects commands with 404 when Operator lacks DEVICE_ACCESS (TC11)', async () => {
+    const unassignedDeviceId = `OTHER-${Date.now()}`;
+    await pool.query(
+      `INSERT INTO device (device_id, device_name, device_status, lifecycle_status, credential_hash)
+       VALUES ($1, 'Other Light', 'ONLINE', 'ACTIVE', 'test-hash')`,
+      [unassignedDeviceId]
+    );
+    try {
+      await request(app)
+        .post(`/devices/${unassignedDeviceId}/commands`)
+        .set('Authorization', `Bearer ${operatorToken}`)
+        .send({ command_type: 'ON' })
+        .expect(404);
+    } finally {
+      await pool.query('DELETE FROM device WHERE device_id = $1', [unassignedDeviceId]);
+    }
   });
 });
