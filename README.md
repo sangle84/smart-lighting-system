@@ -20,7 +20,7 @@ in PostgreSQL, exposes REST and Socket.IO APIs, and provides a React dashboard.
 backend/      Express + TypeScript REST, MQTT, Socket.IO, PostgreSQL access
 frontend/     React + TypeScript + Vite dashboard
 database/     Versioned migration and seed scripts
-deployment/   PostgreSQL and Mosquitto Docker Compose services
+deployment/   Full Docker Compose stack for backend, frontend, PostgreSQL, and Mosquitto
 firmware/     ESP32 firmware area (currently deferred)
 docs/         Requirements, API, database, architecture, and UI contracts
 tests/        Simulator and end-to-end test area
@@ -42,6 +42,9 @@ POSTGRES_USER=smartlighting
 POSTGRES_PASSWORD=replace-with-a-local-password
 POSTGRES_PORT=55432
 MQTT_PORT=1883
+BACKEND_PORT=3100
+FRONTEND_PORT=5173
+VITE_API_URL=http://localhost:3100
 
 DATABASE_URL=postgresql://smartlighting:replace-with-a-local-password@localhost:55432/smartlighting
 JWT_SECRET=replace-with-a-long-local-secret
@@ -57,29 +60,26 @@ MQTT_CLIENT_ID=smart-lighting-backend
 For database seeding, set `SEED_ADMIN_PASSWORD` in the shell. Never put the
 admin password in this file or in SQL.
 
-## Start Infrastructure
+## Start Full Stack
 
 Run from the repository root:
 
 ```powershell
-docker compose --env-file .env -f deployment/docker-compose.yml up -d postgres mosquitto
+docker compose --env-file .env -f deployment/docker-compose.yml up -d --build
 ```
 
-Apply the schema and seed the local roles/admin account:
+The stack exposes the following local endpoints:
 
 ```powershell
-$env:DATABASE_URL = "postgresql://smartlighting:replace-with-a-local-password@localhost:55432/smartlighting"
-$env:SEED_ADMIN_PASSWORD = "replace-with-a-local-admin-password"
-
-psql $env:DATABASE_URL -v ON_ERROR_STOP=1 `
-  -f database/migrations/001_initial_schema.sql
-psql $env:DATABASE_URL -v ON_ERROR_STOP=1 `
-  -v SEED_ADMIN_PASSWORD="$env:SEED_ADMIN_PASSWORD" `
-  -f database/seeds/001_roles_and_admin.sql
+Frontend:   http://localhost:5173
+Backend:    http://localhost:3100
+Health:     http://localhost:3100/health
+PostgreSQL: localhost:55432
+Mosquitto:  localhost:1883
 ```
 
-The database contains exactly the eight entities documented in
-[`docs/DATABASE.md`](docs/DATABASE.md).
+On a new PostgreSQL volume, Compose automatically applies the migration and
+seed scripts. Existing volumes are not initialized again.
 
 ## Run Backend
 

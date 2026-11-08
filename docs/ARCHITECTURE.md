@@ -171,7 +171,7 @@ Adaptive Lighting là logic tự động chạy **trên ESP32**, điều chỉnh
 
 ### 7.1 Chu kỳ đánh giá và trạng thái "có người" **[ĐÃ BỔ SUNG]**
 
-- Adaptive Lighting được đánh giá lại ở **mỗi chu kỳ đọc cảm biến (5 giây)**, cùng nhịp với chu kỳ telemetry.
+- Adaptive Lighting được đánh giá lại ở **mỗi chu kỳ đọc cảm biến (1 giây)**, cùng nhịp với chu kỳ telemetry.
 - "Có người" là **trạng thái hiệu dụng (effective motion state)**: `true` nếu RCWL-0516 đã phát hiện chuyển động trong vòng `motion_timeout_sec` gần nhất, ngược lại `false`. Đây là trạng thái nội bộ của firmware, không phải một field payload mới; trường `motion` trong telemetry vẫn là kết quả đọc cảm biến theo `API_SPEC.md` mục B.3.
   - *Lý do/Rationale:* dùng chân RCWL-0516 thô sẽ khiến một xung nhiễu ngắn làm đèn/override đổi trạng thái liên tục; `motion_timeout_sec` đã có sẵn trong `adaptive_config` nên không cần thêm cấu hình.
 

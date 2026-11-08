@@ -86,24 +86,63 @@ describe('alerts, dashboard and audit REST API', () => {
       alert_id: alertId,
       status: 'ACKNOWLEDGED',
     });
-  });
 
-  it('returns dashboard data and protects audit logs', async () => {
-    const summary = await request(app)
-      .get('/dashboard/summary')
-      .set('Authorization', `Bearer ${viewerToken}`)
-      .expect(200);
-    expect(summary.body.devices.total).toBe(1);
-    expect(summary.body.alerts.active_count).toBe(1);
-
+    // Resolve alert: 403 for Viewer, 200 for Admin
     await request(app)
-      .get('/audit-logs')
+      .patch(`/alerts/${alertId}/resolve`)
       .set('Authorization', `Bearer ${viewerToken}`)
       .expect(403);
 
-    await request(app)
-      .get('/audit-logs?limit=1')
+    const resolved = await request(app)
+      .patch(`/alerts/${alertId}/resolve`)
       .set('Authorization', `Bearer ${adminToken}`)
       .expect(200);
+    expect(resolved.body).toMatchObject({
+      alert_id: alertId,
+      status: 'RESOLVED',
+    });
+
+    // Nonexistent alert: 404
+    await request(app)
+      .patch('/alerts/00000000-0000-4000-8000-000000000000/resolve')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(404);
+  });
+
+  it('returns dashboard data and protects audit logs', async () => {
+    // Insert a new active alert to verify active_count
+    const activeAlert = await pool.query<{ alert_id: string }>(
+      `INSERT INTO alert (device_id, alert_type, severity, message)
+       VALUES ($1, 'DEVICE_OFFLINE', 'CRITICAL', 'active alert') RETURNING alert_id`,
+      [deviceId]
+    );
+
+    try {
+      const summary = await request(app)
+        .get('/dashboard/summary')
+        .set('Authorization', `Bearer ${viewerToken}`)
+        .expect(200);
+      expect(summary.body.devices.total).toBe(1);
+      expect(summary.body.alerts.active_count).toBe(1);
+
+      const dashboardDevs = await request(app)
+        .get('/dashboard/devices')
+        .set('Authorization', `Bearer ${viewerToken}`)
+        .expect(200);
+      expect(Array.isArray(dashboardDevs.body.data)).toBe(true);
+      expect(dashboardDevs.body.data.some((d: { device_id: string }) => d.device_id === deviceId)).toBe(true);
+
+      await request(app)
+        .get('/audit-logs')
+        .set('Authorization', `Bearer ${viewerToken}`)
+        .expect(403);
+
+      await request(app)
+        .get('/audit-logs?limit=1')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(200);
+    } finally {
+      await pool.query('DELETE FROM alert WHERE alert_id = $1', [activeAlert.rows[0].alert_id]);
+    }
   });
 });

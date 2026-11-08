@@ -50,7 +50,7 @@ async function request<T>(path: string, init: RequestInit = {}, canRefresh = tru
     credentials: 'include',
   });
 
-  if (response.status === 401 && canRefresh && path !== '/auth/refresh') {
+  if (response.status === 401 && canRefresh && path !== '/auth/refresh' && path !== '/auth/login') {
     const refreshed = await request<{ access_token: string }>('/auth/refresh', { method: 'POST' }, false);
     setAccessToken(refreshed.access_token);
     return request<T>(path, init, false);
@@ -65,10 +65,14 @@ async function request<T>(path: string, init: RequestInit = {}, canRefresh = tru
 
 export const api = {
   login: (username: string, password: string) =>
-    request<{ access_token: string; user: User }>('/auth/login', {
-      method: 'POST',
-      body: JSON.stringify({ username, password }),
-    }),
+    request<{ access_token: string; user: User }>(
+      '/auth/login',
+      {
+        method: 'POST',
+        body: JSON.stringify({ username, password }),
+      },
+      false
+    ),
   logout: () => request<{ message: string }>('/auth/logout', { method: 'POST' }),
   refresh: () => request<{ access_token: string }>('/auth/refresh', { method: 'POST' }, false),
   changePassword: (current_password: string, new_password: string) =>

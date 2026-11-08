@@ -60,6 +60,27 @@ describe('devices REST API', () => {
       })
     );
     expect(response.body.credential_hash).toBeUndefined();
+
+    // Duplicate device_id returns 409 Conflict
+    await request(app)
+      .post('/devices')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ device_id: deviceId, device_name: 'Duplicate Light' })
+      .expect(409);
+
+    // Missing required fields returns 400 Validation Error
+    await request(app)
+      .post('/devices')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ device_id: '' })
+      .expect(400);
+
+    // Viewer cannot onboard devices (403)
+    await request(app)
+      .post('/devices')
+      .set('Authorization', `Bearer ${viewerToken}`)
+      .send({ device_id: `VIEWER-${Date.now()}`, device_name: 'Light' })
+      .expect(403);
   });
 
   it('scopes non-admin device access and supports telemetry reads', async () => {
@@ -124,5 +145,94 @@ describe('devices REST API', () => {
         },
       })
       .expect(400);
+  });
+
+  it('lists devices scoped by access, reads access list, updates device and lifecycle (TC10, TC11)', async () => {
+    // GET /devices: Admin sees all devices, Viewer sees only assigned
+    const adminList = await request(app)
+      .get('/devices')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+    expect(adminList.body.data.some((d: { device_id: string }) => d.device_id === deviceId)).toBe(true);
+
+    const viewerList = await request(app)
+      .get('/devices')
+      .set('Authorization', `Bearer ${viewerToken}`)
+      .expect(200);
+    expect(viewerList.body.data.some((d: { device_id: string }) => d.device_id === deviceId)).toBe(true);
+
+    // GET /devices/:id/access: Admin 200, Viewer 403
+    await request(app)
+      .get(`/devices/${deviceId}/access`)
+      .set('Authorization', `Bearer ${viewerToken}`)
+      .expect(403);
+
+    const accessList = await request(app)
+      .get(`/devices/${deviceId}/access`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+    expect(accessList.body.users.some((u: { user_id: string }) => u.user_id === viewerId)).toBe(true);
+
+    // PUT /devices/:id: Admin 200, Viewer 403
+    await request(app)
+      .put(`/devices/${deviceId}`)
+      .set('Authorization', `Bearer ${viewerToken}`)
+      .send({ device_name: 'Renamed Light' })
+      .expect(403);
+
+    const updated = await request(app)
+      .put(`/devices/${deviceId}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ device_name: 'Updated Light Name', location: 'Lab 101' })
+      .expect(200);
+    expect(updated.body.device_name).toBe('Updated Light Name');
+
+    // PATCH /devices/:id/lifecycle: Admin 200, Viewer 403, invalid status 400 (TC10)
+    await request(app)
+      .patch(`/devices/${deviceId}/lifecycle`)
+      .set('Authorization', `Bearer ${viewerToken}`)
+      .send({ lifecycle_status: 'PROVISIONED' })
+      .expect(403);
+
+    // Invalid status string returns 400
+    await request(app)
+      .patch(`/devices/${deviceId}/lifecycle`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ lifecycle_status: 'INVALID_STATUS' })
+      .expect(400);
+
+    // Invalid transition directly from REGISTERED to MAINTENANCE returns 400
+    await request(app)
+      .patch(`/devices/${deviceId}/lifecycle`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ lifecycle_status: 'MAINTENANCE' })
+      .expect(400);
+
+    // Valid state transitions: REGISTERED -> PROVISIONED -> ACTIVE -> MAINTENANCE -> DECOMMISSIONED
+    await request(app)
+      .patch(`/devices/${deviceId}/lifecycle`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ lifecycle_status: 'PROVISIONED' })
+      .expect(200);
+
+    await request(app)
+      .patch(`/devices/${deviceId}/lifecycle`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ lifecycle_status: 'ACTIVE' })
+      .expect(200);
+
+    const maintenance = await request(app)
+      .patch(`/devices/${deviceId}/lifecycle`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ lifecycle_status: 'MAINTENANCE' })
+      .expect(200);
+    expect(maintenance.body.lifecycle_status).toBe('MAINTENANCE');
+
+    const decommissioned = await request(app)
+      .patch(`/devices/${deviceId}/lifecycle`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ lifecycle_status: 'DECOMMISSIONED' })
+      .expect(200);
+    expect(decommissioned.body.lifecycle_status).toBe('DECOMMISSIONED');
   });
 });

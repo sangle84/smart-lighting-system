@@ -17,13 +17,16 @@ services:
         "$$MQTT_LIGHT001_PASSWORD" &&
         mosquitto_passwd -b /mosquitto/data/passwordfile LIGHT-002
         "$$MQTT_LIGHT002_PASSWORD" &&
+        cp /mosquitto/config/aclfile.source /mosquitto/data/aclfile &&
+        chown mosquitto:mosquitto /mosquitto/data/aclfile &&
+        chmod 0700 /mosquitto/data/aclfile &&
         chown mosquitto:mosquitto /mosquitto/data/passwordfile &&
         exec mosquitto -c /mosquitto/config/mosquitto.conf
     ports:
       - "${MQTT_PORT:-1883}:1883"
     volumes:
       - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
-      - ./mosquitto/aclfile:/mosquitto/config/aclfile:ro
+      - ./mosquitto/aclfile:/mosquitto/config/aclfile.source:ro
       - mosquitto_data:/mosquitto/data
       - mosquitto_log:/mosquitto/log
 
@@ -34,10 +37,13 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-smartlighting}
       POSTGRES_USER: ${POSTGRES_USER:-smartlighting}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}
+      SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:?SEED_ADMIN_PASSWORD must be set in .env}
     ports:
       - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql
+      - ../database/migrations/001_initial_schema.sql:/docker-entrypoint-initdb.d/001_initial_schema.sql:ro
+      - ../database/seeds/001_roles_and_admin.sql:/docker-entrypoint-initdb.d/002_roles_and_admin.sql:ro
     healthcheck:
       test:
         - CMD-SHELL
@@ -45,6 +51,57 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+
+  backend:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile.backend
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATABASE_URL: postgresql://${POSTGRES_USER:-smartlighting}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}@postgres:5432/${POSTGRES_DB:-smartlighting}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set in .env}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-900}
+      REFRESH_TOKEN_EXPIRES_IN: ${REFRESH_TOKEN_EXPIRES_IN:-604800}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      COOKIE_SAME_SITE: ${COOKIE_SAME_SITE:-lax}
+      MQTT_URL: mqtt://mosquitto:1883
+      MQTT_CLIENT_ID: ${MQTT_CLIENT_ID:-smart-lighting-backend}
+      MQTT_USERNAME: smart-lighting-backend
+      MQTT_PASSWORD: ${MQTT_BACKEND_PASSWORD:?MQTT_BACKEND_PASSWORD must be set in .env}
+      MQTT_COMMAND_TIMEOUT_MS: ${MQTT_COMMAND_TIMEOUT_MS:-5000}
+      MQTT_HEARTBEAT_TIMEOUT_MS: ${MQTT_HEARTBEAT_TIMEOUT_MS:-30000}
+      MQTT_HEARTBEAT_CHECK_INTERVAL_MS: ${MQTT_HEARTBEAT_CHECK_INTERVAL_MS:-10000}
+    ports:
+      - "${BACKEND_PORT:-3100}:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mosquitto:
+        condition: service_started
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3000/health').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile.frontend
+      args:
+        VITE_API_URL: ${VITE_API_URL:-http://localhost:3100}
+    restart: unless-stopped
+    ports:
+      - "${FRONTEND_PORT:-5173}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
 
 volumes:
   mosquitto_data:
