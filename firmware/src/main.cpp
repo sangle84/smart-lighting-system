@@ -10,7 +10,6 @@
 #include <PubSubClient.h>
 
 #include "config.h"
-#include "mqtt.cpp"
 
 namespace {
 
@@ -53,6 +52,10 @@ PubSubClient mqttClient(wifiClient);
 bool bh1750Ready = false;
 bool ina219Ready = false;
 bool pwmReady = false;
+
+// Connection Logging
+bool wifiConnectedLogged = false;
+bool mqttConnectedLogged = false;
 
 // Sensor Readings
 float latestLux = 0.0f;
@@ -403,21 +406,31 @@ void updateSensorsAndAdaptive(uint32_t now) {
 // ==========================================
 // Network & Connection Management
 // ==========================================
-void setupWiFi() {
-  Serial.printf("[WIFI] Connecting to %s...\n", WIFI_SSID);
-  WiFi.mode(WIFI_STA);
-  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-}
-
 void connectMqtt() {
-  if (WiFi.status() != WL_CONNECTED) return;
-  if (mqttClient.connected()) return;
-
   uint32_t now = millis();
   if (now - lastMqttReconnectAttempt < RECONNECT_RETRY_INTERVAL_MS) {
     return;
   }
   lastMqttReconnectAttempt = now;
+
+  // Wi-Fi must be connected first
+  if (WiFi.status() != WL_CONNECTED) {
+    wifiConnectedLogged = false;
+    return;
+  }
+
+  // Log Wi-Fi connection once
+  if (!wifiConnectedLogged) {
+    Serial.println("[WIFI] Connected successfully!");
+    Serial.print("[WIFI] IP Address: ");
+    Serial.println(WiFi.localIP());
+    wifiConnectedLogged = true;
+  }
+
+  // MQTT already connected
+  if (mqttClient.connected()) {
+    return;
+  }
 
   Serial.printf("[MQTT] Connecting to broker %s:%d as %s...\n",
                 MQTT_BROKER_HOST, MQTT_BROKER_PORT, DEVICE_ID);
@@ -430,7 +443,10 @@ void connectMqtt() {
 
   if (mqttClient.connect(DEVICE_ID, DEVICE_ID, MQTT_DEVICE_PASSWORD,
                          statusTopic, 1, true, lwtPayload)) {
+    mqttConnectedLogged = true;
     Serial.println("[MQTT] Connected successfully!");
+    Serial.print("[MQTT] Device ID: ");
+    Serial.println(DEVICE_ID);
 
     // Publish ONLINE status on connect (retain = true, QoS 1)
     publishStatus("ONLINE", true);
@@ -440,6 +456,7 @@ void connectMqtt() {
     mqttClient.subscribe(configTopic, 1);
     Serial.printf("[MQTT] Subscribed to %s and %s\n", commandTopic, configTopic);
   } else {
+    mqttConnectedLogged = false;
     Serial.printf("[MQTT] Connection failed, rc=%d. Will retry in 5s\n", mqttClient.state());
   }
 }
@@ -450,6 +467,35 @@ void setupTopics() {
   snprintf(commandTopic, sizeof(commandTopic), "iot/device/%s/command", DEVICE_ID);
   snprintf(ackTopic, sizeof(ackTopic), "iot/device/%s/ack", DEVICE_ID);
   snprintf(configTopic, sizeof(configTopic), "iot/device/%s/config", DEVICE_ID);
+}
+
+void setupWiFi() {
+  WiFi.mode(WIFI_STA);
+  Serial.printf("[WIFI] Connecting to %s...\n", WIFI_SSID);
+  Serial.println("[WIFI] Note: Password is hidden for security.");
+
+  uint32_t connectStart = millis();
+  const uint32_t TIMEOUT_MS = 15000;  // 15s timeout
+
+  while (WiFi.status() != WL_CONNECTED && (millis() - connectStart) < TIMEOUT_MS) {
+    delay(250);
+    Serial.print('.');
+  }
+
+  if (WiFi.status() == WL_CONNECTED) {
+    wifiConnectedLogged = false;  // Reset để log khi reconnect
+    Serial.println();
+    Serial.println("[WIFI] Connected successfully!");
+    Serial.print("[WIFI] IP Address: ");
+    Serial.println(WiFi.localIP());
+    Serial.print("[WIFI] RSSI: ");
+    Serial.print(WiFi.RSSI());
+    Serial.println(" dBm");
+  } else {
+    Serial.println();
+    Serial.printf("[WIFI] Connection timeout, status=%d\n", WiFi.status());
+    Serial.println("[WIFI] Retrying...");
+  }
 }
 
 void setupSensorsAndHardware() {
@@ -507,7 +553,15 @@ void loop() {
   uint32_t now = millis();
 
   // Wi-Fi connection monitoring
-  if (WiFi.status() == WL_CONNECTED) {
+  if (WiFi.status() != WL_CONNECTED) {
+    if ((now - lastMqttReconnectAttempt) >= RECONNECT_RETRY_INTERVAL_MS) {
+      lastMqttReconnectAttempt = now;
+      Serial.println("[WIFI] Reconnecting Wi-Fi...");
+      WiFi.disconnect();
+      WiFi.mode(WIFI_STA);
+      WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+    }
+  } else {
     if (!mqttClient.connected()) {
       connectMqtt();
     } else {
