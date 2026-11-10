@@ -5,6 +5,17 @@ export interface User {
   role: 'ADMIN' | 'OPERATOR' | 'VIEWER';
 }
 
+export interface ManagedUser {
+  user_id: string;
+  username: string;
+  email: string;
+  role_id: number;
+  role_name: 'ADMIN' | 'OPERATOR' | 'VIEWER';
+  status: 'ACTIVE' | 'LOCKED';
+  created_at: string;
+  updated_at?: string;
+}
+
 export interface Device {
   device_id: string;
   device_name: string;
@@ -79,6 +90,22 @@ export const api = {
     request<{ message: string }>('/auth/password', {
       method: 'PUT',
       body: JSON.stringify({ current_password, new_password }),
+    }),
+  users: () => request<{ data: ManagedUser[]; total: number }>('/users'),
+  createUser: (input: { username: string; email: string; password: string; role_id: number }) =>
+    request<ManagedUser>('/users', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+  updateUser: (userId: string, input: { email?: string; role_id?: number }) =>
+    request<ManagedUser>(`/users/${userId}`, {
+      method: 'PUT',
+      body: JSON.stringify(input),
+    }),
+  updateUserStatus: (userId: string, status: ManagedUser['status']) =>
+    request<Pick<ManagedUser, 'user_id' | 'status' | 'updated_at'>>(`/users/${userId}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status }),
     }),
   devices: () => request<{ data: Device[]; total: number }>('/devices'),
   latestTelemetry: (deviceId: string) => request<Telemetry>(`/devices/${deviceId}/telemetry/latest`),

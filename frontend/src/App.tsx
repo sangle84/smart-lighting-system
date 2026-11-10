@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { io, type Socket } from 'socket.io-client';
 import { Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { api, API_URL, getAccessToken, type Device, type Telemetry } from './api';
+import { api, API_URL, getAccessToken, type Device, type ManagedUser, type Telemetry } from './api';
 import { AuthProvider, useAuth } from './auth';
 
 function LoginScreen() {
@@ -45,6 +45,12 @@ function LoginScreen() {
 
 function Dashboard() {
   const { user, logout } = useAuth();
+  type View = 'dashboard' | 'devices' | 'alerts' | 'users';
+  const getView = (): View => {
+    const hash = window.location.hash.slice(1);
+    return hash === 'devices' || hash === 'alerts' || hash === 'users' ? hash : 'dashboard';
+  };
+  const [view, setView] = useState<View>(getView);
   const [devices, setDevices] = useState<Device[]>([]);
   const [selectedId, setSelectedId] = useState('');
   const [telemetry, setTelemetry] = useState<Telemetry | null>(null);
@@ -57,6 +63,12 @@ function Dashboard() {
   const selected = useMemo(() => devices.find((device) => device.device_id === selectedId), [devices, selectedId]);
 
   useEffect(() => {
+    const handleHashChange = () => setView(getView());
+    window.addEventListener('hashchange', handleHashChange);
+    return () => window.removeEventListener('hashchange', handleHashChange);
+  }, []);
+
+  useEffect(() => {
     if (!user) return;
     api.devices()
       .then((result) => {
@@ -67,7 +79,7 @@ function Dashboard() {
   }, [user]);
 
   useEffect(() => {
-    if (!selectedId) return;
+    if (!selectedId || (view !== 'dashboard' && view !== 'devices')) return;
     api.latestTelemetry(selectedId)
       .then((value) => {
         setTelemetry(value);
@@ -77,10 +89,10 @@ function Dashboard() {
         setTelemetry(null);
         setHistory([]);
       });
-  }, [selectedId]);
+  }, [selectedId, view]);
 
   useEffect(() => {
-    if (!selectedId) return;
+    if (!selectedId || (view !== 'dashboard' && view !== 'devices')) return;
     const socket: Socket = io(API_URL, { auth: { token: getAccessToken() }, withCredentials: true });
     socket.on('telemetry:update', (value: Telemetry) => {
       if (value.device_id === selectedId) {
@@ -95,7 +107,7 @@ function Dashboard() {
     return () => {
       socket.close();
     };
-  }, [selectedId]);
+  }, [selectedId, view]);
 
   async function sendCommand(command_type: 'ON' | 'OFF' | 'PWM', command_value?: number) {
     if (!selectedId) return;
@@ -110,24 +122,51 @@ function Dashboard() {
 
   if (!user) return <LoginScreen />;
 
+  const pageTitles: Record<View, string> = {
+    dashboard: 'Tổng quan',
+    devices: 'Thiết bị',
+    alerts: 'Cảnh báo',
+    users: 'Người dùng',
+  };
+
   return (
     <div className="app-shell">
       <aside className="sidebar">
         <div className="sidebar-brand"><div className="brand-mark small">SL</div><div><strong>Smart Light</strong><span>Control room</span></div></div>
-        <nav><a className="nav-item active" href="#dashboard"><span>◈</span> Tổng quan</a><a className="nav-item" href="#devices"><span>⌘</span> Thiết bị</a><a className="nav-item" href="#alerts"><span>!</span> Cảnh báo</a>{user.role === 'ADMIN' && <a className="nav-item" href="#users"><span>♙</span> Người dùng</a>}</nav>
+        <nav><a className={`nav-item ${view === 'dashboard' ? 'active' : ''}`} href="#dashboard"><span>◈</span> Tổng quan</a><a className={`nav-item ${view === 'devices' ? 'active' : ''}`} href="#devices"><span>⌘</span> Thiết bị</a><a className={`nav-item ${view === 'alerts' ? 'active' : ''}`} href="#alerts"><span>!</span> Cảnh báo</a>{user.role === 'ADMIN' && <a className={`nav-item ${view === 'users' ? 'active' : ''}`} href="#users"><span>♙</span> Người dùng</a>}</nav>
         <div className="sidebar-footer"><div className="connection-dot"><i /> Hệ thống đang trực tuyến</div><button className="text-button" onClick={() => void logout()}>Đăng xuất</button></div>
       </aside>
-      <main className="content">
-        <header className="topbar"><div><p className="eyebrow">CONTROL ROOM / OVERVIEW</p><h2>Chào {user.username}</h2></div><div className="top-actions"><span className="role-pill">{user.role}</span><button className="icon-button" title="Đổi mật khẩu" onClick={() => setPasswordOpen(true)}>•••</button></div></header>
+      <main className="content" id={view}>
+        <header className="topbar"><div><p className="eyebrow">CONTROL ROOM / {pageTitles[view].toUpperCase()}</p><h2>{pageTitles[view]} · {user.username}</h2></div><div className="top-actions"><span className="role-pill">{user.role}</span><button className="icon-button" title="Đổi mật khẩu" onClick={() => setPasswordOpen(true)}>•••</button></div></header>
         {error && <div className="notice error-text">{error}</div>}
         {notice && <div className="notice success-text">{notice}</div>}
-        <section className="hero-row"><div><span className="section-kicker">LIVE OVERVIEW</span><h1>Không gian sáng<br /><em>theo cách của bạn.</em></h1></div><div className="hero-stat"><span>Thiết bị đang quản lý</span><strong>{devices.length.toString().padStart(2, '0')}</strong><small>{devices.filter((device) => device.device_status === 'ONLINE').length} online hiện tại</small></div></section>
+        {view === 'dashboard' && <>
+          <section className="hero-row"><div><span className="section-kicker">LIVE OVERVIEW</span><h1>Không gian sáng<br /><em>theo cách của bạn.</em></h1></div><div className="hero-stat"><span>Thiết bị đang quản lý</span><strong>{devices.length.toString().padStart(2, '0')}</strong><small>{devices.filter((device) => device.device_status === 'ONLINE').length} online hiện tại</small></div></section>
+          <section className="overview-grid"><div className="panel overview-panel"><span className="section-kicker">CONTROL ROOM</span><h3>Trung tâm vận hành</h3><p className="muted">Chọn một khu vực trong menu để theo dõi thiết bị, xử lý cảnh báo hoặc quản lý tài khoản.</p></div><div className="panel overview-stat-grid"><div><span>Thiết bị</span><strong>{devices.length}</strong></div><div><span>Đang online</span><strong>{devices.filter((device) => device.device_status === 'ONLINE').length}</strong></div><div><span>Vai trò</span><strong>{user.role}</strong></div></div></section>
+        </>}
+        {view === 'devices' && <>
+        <section className="hero-row"><div><span className="section-kicker">DEVICE CONTROL</span><h1>Thiết bị<br /><em>theo thời gian thực.</em></h1></div><div className="hero-stat"><span>Thiết bị đang quản lý</span><strong>{devices.length.toString().padStart(2, '0')}</strong><small>{devices.filter((device) => device.device_status === 'ONLINE').length} online hiện tại</small></div></section>
         <section className="dashboard-grid">
-          <div className="panel device-panel"><div className="panel-heading"><div><span className="section-kicker">DEVICES</span><h3>Thiết bị</h3></div><span className="count-label">{devices.length} total</span></div><div className="device-list">{devices.map((device) => <button key={device.device_id} className={`device-row ${device.device_id === selectedId ? 'selected' : ''}`} onClick={() => setSelectedId(device.device_id)}><span className={`status-dot ${device.device_status.toLowerCase()}`} /><span className="device-copy"><strong>{device.device_name}</strong><small>{device.device_id} · {device.location ?? 'Chưa gán vị trí'}</small></span><span className="device-state">{device.device_status}</span></button>)}{devices.length === 0 && <p className="empty">Chưa có thiết bị được cấp quyền.</p>}</div></div>
+          <div className="panel device-panel" id="devices"><div className="panel-heading"><div><span className="section-kicker">DEVICES</span><h3>Thiết bị</h3></div><span className="count-label">{devices.length} total</span></div><div className="device-list">{devices.map((device) => <button key={device.device_id} className={`device-row ${device.device_id === selectedId ? 'selected' : ''}`} onClick={() => setSelectedId(device.device_id)}><span className={`status-dot ${device.device_status.toLowerCase()}`} /><span className="device-copy"><strong>{device.device_name}</strong><small>{device.device_id} · {device.location ?? 'Chưa gán vị trí'}</small></span><span className="device-state">{device.device_status}</span></button>)}{devices.length === 0 && <p className="empty">Chưa có thiết bị được cấp quyền.</p>}</div></div>
           <div className="panel telemetry-panel"><div className="panel-heading"><div><span className="section-kicker">SELECTED DEVICE</span><h3>{selected?.device_name ?? 'Chưa chọn thiết bị'}</h3></div>{selected && <span className={`status-badge ${selected.device_status.toLowerCase()}`}><i /> {selected.device_status}</span>}</div><div className="metric-grid"><Metric label="Độ sáng" value={telemetry ? `${Number(telemetry.lux).toFixed(1)} lx` : '--'} /><Metric label="Công suất" value={telemetry ? `${Number(telemetry.power).toFixed(2)} W` : '--'} /><Metric label="Điện áp" value={telemetry ? `${Number(telemetry.voltage).toFixed(1)} V` : '--'} /><Metric label="Chuyển động" value={telemetry ? (telemetry.motion ? 'Phát hiện' : 'Ổn định') : '--'} /></div><div className="chart-wrap"><ResponsiveContainer width="100%" height="100%"><LineChart data={history}><XAxis dataKey="timestamp" hide /><YAxis hide domain={[0, 'auto']} /><Tooltip contentStyle={{ background: '#18211e', border: 0, borderRadius: 8 }} formatter={(value: number) => [`${value} lx`, 'Lux']} /><Line type="monotone" dataKey="lux" stroke="#d5f36b" strokeWidth={3} dot={false} /></LineChart></ResponsiveContainer>{history.length < 2 && <span className="chart-placeholder">Đang chờ telemetry realtime</span>}</div></div>
           <div className="panel control-panel"><div className="panel-heading"><div><span className="section-kicker">CONTROL</span><h3>Điều khiển ánh sáng</h3></div><span className="lock-label">{user.role === 'VIEWER' ? 'Chỉ xem' : 'Cho phép'}</span></div>{user.role === 'VIEWER' ? <div className="viewer-message">Bạn có quyền giám sát thiết bị, nhưng không có quyền gửi lệnh.</div> : <><div className="control-buttons"><button onClick={() => void sendCommand('ON')}>Bật đèn</button><button onClick={() => void sendCommand('OFF')}>Tắt đèn</button></div><label className="range-label">Độ sáng <strong>{newPwm}%</strong><input type="range" min="0" max="100" value={newPwm} onChange={(event) => setNewPwm(Number(event.target.value))} /></label><button className="primary-button full" onClick={() => void sendCommand('PWM', newPwm)}>Gửi mức PWM</button></>}</div>
         </section>
-        <footer className="page-footer"><span>SMART LIGHTING SYSTEM · PROTOTYPE</span><span>REST SOURCE OF TRUTH · SOCKET.IO LIVE</span></footer>
+        </>}
+        {/* Alerts Section */}
+      {view === 'alerts' && <section className="panel alerts-panel">
+  <div className="panel-heading"><div><span className="section-kicker">ALERTS</span><h3>Cảnh báo</h3></div></div>
+  <div className="panel-content">
+    {/* TODO: Replace with real alerts list */}
+    <p className="muted">Chưa có cảnh báo nào.</p>
+  </div>
+</section>}
+{/* Users Section (Admin only) */}
+{view === 'users' && user.role === 'ADMIN' && (
+  <section className="panel users-panel">
+    <UserManagement />
+  </section>
+)}
+<footer className="page-footer"><span>SMART LIGHTING SYSTEM · PROTOTYPE</span><span>REST SOURCE OF TRUTH · SOCKET.IO LIVE</span></footer>
       </main>
       {passwordOpen && <ChangePassword onClose={() => setPasswordOpen(false)} />}
     </div>
@@ -135,6 +174,130 @@ function Dashboard() {
 }
 
 function Metric({ label, value }: { label: string; value: string }) { return <div className="metric"><span>{label}</span><strong>{value}</strong></div>; }
+
+const roleOptions: Array<{ id: number; name: ManagedUser['role_name']; label: string }> = [
+  { id: 1, name: 'ADMIN', label: 'Admin' },
+  { id: 2, name: 'OPERATOR', label: 'Operator' },
+  { id: 3, name: 'VIEWER', label: 'Viewer' },
+];
+
+function UserManagement() {
+  const [users, setUsers] = useState<ManagedUser[]>([]);
+  const [total, setTotal] = useState(0);
+  const [modalMode, setModalMode] = useState<'create' | 'edit' | null>(null);
+  const [editingUser, setEditingUser] = useState<ManagedUser | null>(null);
+  const [form, setForm] = useState({ username: '', email: '', password: '', role_id: 2 });
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  async function loadUsers() {
+    try {
+      const result = await api.users();
+      setUsers(result.data);
+      setTotal(result.total);
+      setError('');
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : 'Không tải được danh sách người dùng');
+    }
+  }
+
+  useEffect(() => {
+    void loadUsers();
+  }, []);
+
+  function openCreate() {
+    setEditingUser(null);
+    setForm({ username: '', email: '', password: '', role_id: 2 });
+    setError('');
+    setModalMode('create');
+  }
+
+  function openEdit(user: ManagedUser) {
+    setEditingUser(user);
+    setForm({ username: user.username, email: user.email, password: '', role_id: user.role_id });
+    setError('');
+    setModalMode('edit');
+  }
+
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    setBusy(true);
+    setError('');
+    try {
+      if (modalMode === 'create') {
+        await api.createUser({
+          username: form.username,
+          email: form.email,
+          password: form.password,
+          role_id: form.role_id,
+        });
+      } else if (editingUser) {
+        await api.updateUser(editingUser.user_id, { email: form.email, role_id: form.role_id });
+      }
+      setModalMode(null);
+      await loadUsers();
+    } catch (submitError) {
+      setError(submitError instanceof Error ? submitError.message : 'Không thể lưu người dùng');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function toggleStatus(user: ManagedUser) {
+    setBusy(true);
+    setError('');
+    try {
+      await api.updateUserStatus(user.user_id, user.status === 'ACTIVE' ? 'LOCKED' : 'ACTIVE');
+      await loadUsers();
+    } catch (statusError) {
+      setError(statusError instanceof Error ? statusError.message : 'Không thể cập nhật trạng thái');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <>
+      <div className="panel-heading">
+        <div><span className="section-kicker">USERS</span><h3>Quản lý người dùng</h3></div>
+        <button className="primary-button compact-button" onClick={openCreate}>Thêm người dùng</button>
+      </div>
+      {error && <p className="error-text">{error}</p>}
+      <div className="user-table" role="table" aria-label="Danh sách người dùng">
+        <div className="user-row user-table-header" role="row">
+          <span>Tài khoản</span><span>Vai trò</span><span>Trạng thái</span><span>Thao tác</span>
+        </div>
+        {users.map((managedUser) => (
+          <div className="user-row" role="row" key={managedUser.user_id}>
+            <div><strong>{managedUser.username}</strong><small>{managedUser.email}</small></div>
+            <span className="role-label">{managedUser.role_name}</span>
+            <span className={`user-status ${managedUser.status.toLowerCase()}`}>{managedUser.status === 'ACTIVE' ? 'Đang hoạt động' : 'Đã khóa'}</span>
+            <div className="user-actions">
+              <button className="table-button" onClick={() => openEdit(managedUser)}>Sửa</button>
+              <button className="table-button" disabled={busy} onClick={() => void toggleStatus(managedUser)}>{managedUser.status === 'ACTIVE' ? 'Khóa' : 'Mở khóa'}</button>
+            </div>
+          </div>
+        ))}
+        {users.length === 0 && <p className="empty">Chưa có người dùng nào.</p>}
+      </div>
+      <p className="table-footer">{total} người dùng</p>
+      {modalMode && (
+        <div className="modal-backdrop">
+          <form className="modal user-modal" onSubmit={submit}>
+            <div className="panel-heading"><h3>{modalMode === 'create' ? 'Thêm người dùng' : 'Cập nhật người dùng'}</h3><button type="button" className="icon-button" onClick={() => setModalMode(null)}>×</button></div>
+            {modalMode === 'create' && <label>Tên đăng nhập<input value={form.username} onChange={(event) => setForm({ ...form, username: event.target.value })} required maxLength={50} /></label>}
+            {modalMode === 'edit' && <div className="readonly-field"><span>Tên đăng nhập</span><strong>{form.username}</strong></div>}
+            <label>Email<input type="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} required maxLength={100} /></label>
+            {modalMode === 'create' && <label>Mật khẩu<input type="password" value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} minLength={8} required /></label>}
+            <label>Vai trò<select value={form.role_id} onChange={(event) => setForm({ ...form, role_id: Number(event.target.value) })}>{roleOptions.map((role) => <option key={role.id} value={role.id}>{role.label}</option>)}</select></label>
+            {error && <p className="error-text">{error}</p>}
+            <button className="primary-button full" disabled={busy}>{busy ? 'Đang lưu...' : 'Lưu thay đổi'}</button>
+          </form>
+        </div>
+      )}
+    </>
+  );
+}
 
 function ChangePassword({ onClose }: { onClose: () => void }) {
   const [current, setCurrent] = useState('');
