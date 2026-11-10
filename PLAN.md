@@ -67,7 +67,7 @@ Done khi:
 - Khi client reload/reconnect, dữ liệu trạng thái hiện tại phải được lấy từ REST/Database như **source of truth**; Socket.IO chỉ dùng để cập nhật realtime, không được coi là persistence hoặc cơ chế đảm bảo client luôn nhận được mọi event.
 
 ### Giai đoạn 6 — Frontend Core
-Done khi:
+Done khi:  
 - Login flow chạy được end-to-end với backend thật (không phải mock).
 - Dashboard hiển thị được telemetry realtime qua Socket.IO (tự quan sát số liệu thay đổi khi giả lập gửi telemetry mới).
 - RBAC UI: tự đăng nhập bằng cả 3 role và xác nhận đúng menu/nút hiển thị khác nhau.
