@@ -26,7 +26,8 @@ function AppShell() {
   if (authLoading) return <LoadingScreen />; if (!user) return route.name === 'auth-notice' ? <AuthNotice /> : <LoginScreen />;
   const admin = user.role === 'ADMIN'; const title = route.name === 'dashboard' ? 'Tổng quan' : route.name === 'device' ? 'Chi tiết thiết bị' : route.name === 'devices' ? 'Thiết bị' : route.name === 'alerts' ? 'Cảnh báo' : route.name === 'users' ? 'Người dùng' : 'Nhật ký kiểm toán'; const link = (event: React.MouseEvent<HTMLAnchorElement>, path: string) => { event.preventDefault(); go(path); };
   return <div className="app-shell"><aside className="sidebar"><div className="sidebar-brand"><div className="brand-mark small">SL</div><div><strong>Smart Light</strong><span>Điều khiển</span></div></div><nav aria-label="Điều hướng chính"><a className={route.name === 'dashboard' ? 'nav-item active' : 'nav-item'} href="/" onClick={(event) => link(event, '/')}>◈ Tổng quan</a><a className={route.name === 'devices' || route.name === 'device' ? 'nav-item active' : 'nav-item'} href="/devices" onClick={(event) => link(event, '/devices')}>⌘ Thiết bị</a><a className={route.name === 'alerts' ? 'nav-item active' : 'nav-item'} href="/alerts" onClick={(event) => link(event, '/alerts')}>! Cảnh báo</a>{admin && <><a className={route.name === 'users' ? 'nav-item active' : 'nav-item'} href="/users" onClick={(event) => link(event, '/users')}>♙ Người dùng</a><a className={route.name === 'audit' ? 'nav-item active' : 'nav-item'} href="/audit-logs" onClick={(event) => link(event, '/audit-logs')}>≡ Nhật ký kiểm toán</a></>}</nav><div className="sidebar-footer"><RealtimeStatus status={realtime} /><button className="text-button" onClick={() => void logout()}>Đăng xuất</button></div></aside><main className="main-area"><header className="topbar"><div><p className="eyebrow">HỆ THỐNG CHIẾU SÁNG THÔNG MINH</p><h2>{title}</h2></div><div className="top-actions"><RealtimeStatus status={realtime} /><span className="role-pill">{user.role}</span><button className="icon-button" aria-label="Đổi mật khẩu" onClick={() => setPasswordOpen(true)}>•••</button></div></header><div className="page-content">{error && <ErrorState message={error} onRetry={() => setReload((value) => value + 1)} />}{loading && <LoadingState />}{!loading && !error && route.name === 'dashboard' && <DashboardPage summary={summary} devices={dashboardDevices} />}{!loading && !error && route.name === 'devices' && <DevicesPage devices={devices} total={total} isAdmin={admin} onSuccess={() => setReload((v) => v + 1)} setOnboardOpen={setOnboardOpen} />}{route.name === 'device' && route.deviceId && <DeviceDetail deviceId={route.deviceId} isAdmin={admin} />}{!loading && !error && route.name === 'alerts' && <AlertsPage alerts={alerts} total={total} canAct={user.role !== 'VIEWER'} onReload={() => setReload((value) => value + 1)} />}{route.name === 'users' && admin && <UserManagement currentUserId={user.user_id} />}{route.name === 'audit' && admin && <AuditPage logs={logs} total={total} />}{(route.name === 'users' || route.name === 'audit') && !admin && <EmptyState title="Bạn không có quyền truy cập" message="Chức năng này chỉ dành cho Admin." />}</div></main>{passwordOpen && <ChangePassword onClose={() => setPasswordOpen(false)} />}
-      {onboardOpen && <DeviceOnboardFixed open={onboardOpen} onClose={() => { setOnboardOpen(false); setOnboardError(''); }} onSubmit={(result) => { setOnboardOpen(false); setOnboardResult(result); setDevices((prev) => [...prev, { ...result, device_status: 'OFFLINE' as const, lifecycle_status: 'REGISTERED' as const, last_seen_at: null, adaptive_config: null, created_at: result.created_at }] as Device[]); }} />}</div>;
+      {onboardOpen && <DeviceOnboardFixed open={onboardOpen} onClose={() => { setOnboardOpen(false); setOnboardError(''); }} onSubmit={(result) => { setOnboardOpen(false); setOnboardResult(result); setDevices((prev) => [...prev, { ...result, device_status: 'OFFLINE' as const, lifecycle_status: 'REGISTERED' as const, last_seen_at: null, adaptive_config: null, created_at: result.created_at }] as Device[]); }} />}
+      {onboardResult && <ProvisioningModal result={onboardResult} onClose={() => setOnboardResult(null)} onStatusUpdated={(newStatus) => { setDevices((prev) => prev.map((d) => (d.device_id === onboardResult.device_id ? { ...d, lifecycle_status: newStatus } : d))); }} />}</div>;
 }
 
 function DashboardPage({ summary, devices }: { summary: DashboardSummary | null; devices: DashboardDevice[] }) { return <><section className="page-heading"><div><p className="eyebrow">TỔNG QUAN</p><h1>Giám sát ánh sáng</h1><p className="muted">Trạng thái thiết bị và dữ liệu vận hành trong một màn hình.</p></div>{summary && <StatusBadge value={summary.system_status} label={summary.system_status} />}</section><section className="kpi-grid"><StatCard label="Thiết bị tổng" value={summary?.devices.total ?? 0} /><StatCard label="Online / Offline / Lỗi" value={`${summary?.devices.online ?? 0} / ${summary?.devices.offline ?? 0} / ${summary?.devices.fault ?? 0}`} /><StatCard label="Cảnh báo đang mở" value={summary?.alerts.active_count ?? 0} note={`${summary?.alerts.resolved_today ?? 0} đã xử lý hôm nay`} /><StatCard label="Công suất trung bình" value={`${Number(summary?.avg_power_watts ?? 0).toFixed(2)} W`} /></section><Panel title="Thiết bị gần đây" eyebrow="THIẾT BỊ" action={<a className="text-link" href="/devices" onClick={(event) => linkAndNavigate(event, '/devices')}>Xem tất cả</a>}>{devices.length ? <div className="dashboard-device-grid">{devices.map((device) => <button className="device-card" key={device.device_id} onClick={() => go(`/devices/${encodeURIComponent(device.device_id)}`)}><div className="card-row"><div><strong>{device.device_name}</strong><small>{device.device_id}</small></div><StatusBadge value={device.device_status} label={device.device_status} /></div><div className="device-metrics"><span>Lux <b>{device.lux ?? '--'}</b></span><span>Motion <b>{device.motion === null ? '--' : device.motion ? 'Có' : 'Không'}</b></span><span>Power <b>{device.power ?? '--'} W</b></span></div><label className="pwm-meter">PWM <progress max="100" value={device.pwm ?? 0} /> <b>{device.pwm ?? '--'}%</b></label><small className="muted">{device.last_seen_at ? `Cập nhật ${relativeTime(device.last_seen_at)}` : 'Chưa có tín hiệu'}</small></button>)}</div> : <EmptyState title="Chưa có thiết bị" message="Bạn chưa được cấp quyền truy cập thiết bị nào. Liên hệ Admin." />}</Panel></>; }
@@ -34,7 +35,7 @@ function linkAndNavigate(event: React.MouseEvent<HTMLAnchorElement>, path: strin
 
 function DevicesPage({ devices, total, isAdmin, onSuccess, setOnboardOpen }: { devices: Device[]; total: number; isAdmin: boolean; onSuccess?: () => void; setOnboardOpen: (open: boolean) => void }) { const [status, setStatus] = useState(''); const [lifecycle, setLifecycle] = useState(''); const filtered = devices.filter((device) => (!status || device.device_status === status) && (!lifecycle || device.lifecycle_status === lifecycle)); return <><section className="page-heading"><div><p className="eyebrow">QUẢN LÝ THIẾT BỊ</p><h1>Danh sách thiết bị</h1><p className="muted">{total} thiết bị trong phạm vi truy cập của bạn.</p></div>{isAdmin && <button className="primary-button" onClick={() => setOnboardOpen(true)}>Thêm thiết bị</button>}</section><Panel title="Bộ lọc" eyebrow="BỘ LỌC"><div className="filter-bar"><label>Trạng thái<select value={status} onChange={(event) => setStatus(event.target.value)}><option value="">Tất cả</option><option value="ONLINE">Online</option><option value="OFFLINE">Offline</option><option value="FAULT">Lỗi</option></select></label><label>Vòng đời<select value={lifecycle} onChange={(event) => setLifecycle(event.target.value)}><option value="">Tất cả</option>{['REGISTERED', 'PROVISIONED', 'ACTIVE', 'MAINTENANCE', 'DECOMMISSIONED'].map((value) => <option key={value}>{value}</option>)}</select></label></div></Panel><Panel title="Thiết bị" eyebrow="DANH SÁCH"><div className="data-table"><div className="table-header"><span>Thiết bị</span><span>Vị trí</span><span>Trạng thái</span><span>Vòng đời</span><span>Hoạt động cuối</span></div>{filtered.map((device) => <button className={`table-row ${device.lifecycle_status === 'DECOMMISSIONED' ? 'decommissioned' : ''}`} key={device.device_id} onClick={() => go(`/devices/${encodeURIComponent(device.device_id)}`)}><span><strong>{device.device_name}</strong><small>{device.device_id}</small></span><span>{device.location ?? 'Chưa gán'}</span><StatusBadge value={device.device_status} label={device.device_status} /><StatusBadge value={device.lifecycle_status} label={device.lifecycle_status} /><span>{device.last_seen_at ? relativeTime(device.last_seen_at) : 'Chưa có'}</span></button>)}{!filtered.length && <EmptyState title="Chưa có thiết bị" message={isAdmin ? 'Bấm Thêm thiết bị để bắt đầu.' : 'Bạn chưa được cấp quyền truy cập thiết bị nào.'} />}</div></Panel></>; }
 
-function DeviceDetail({ deviceId, isAdmin }: { deviceId: string; isAdmin: boolean }) { const [device, setDevice] = useState<Device | null>(null); const [history, setHistory] = useState<Telemetry[]>([]); const [tab, setTab] = useState('overview'); const [pwm, setPwm] = useState(60); const [message, setMessage] = useState(''); useEffect(() => { void Promise.all([api.device(deviceId), api.telemetry(deviceId)]).then(([nextDevice, nextHistory]) => { setDevice(nextDevice); setHistory(nextHistory.data); }).catch((loadError: unknown) => setMessage(loadError instanceof Error ? loadError.message : 'Không tìm thấy thiết bị')); }, [deviceId]); if (message) return <ErrorState message={message} onRetry={() => window.location.reload()} />; if (!device) return <LoadingState />; const send = async (command: 'ON' | 'OFF' | 'PWM') => { try { await api.command(deviceId, command, command === 'PWM' ? pwm : undefined); setMessage('Đã gửi lệnh điều khiển.'); } catch (commandError) { setMessage(commandError instanceof Error ? commandError.message : 'Không gửi được lệnh'); } }; const latest = history.length ? history[history.length - 1] : null; return <><section className="page-heading"><div><button className="back-link" onClick={() => go('/devices')}>← Thiết bị</button><h1>{device.device_name}</h1><p className="muted">{device.device_id} · {device.location ?? 'Chưa gán vị trí'} · Firmware {device.firmware_version}</p></div><div className="status-stack"><StatusBadge value={device.device_status} label={device.device_status} /><StatusBadge value={device.lifecycle_status} label={device.lifecycle_status} /></div></section><div className="tabs">{['overview', 'telemetry', 'control', ...(isAdmin ? ['config', 'lifecycle'] : [])].map((value) => <button className={tab === value ? 'active' : ''} key={value} onClick={() => setTab(value)}>{value === 'overview' ? 'Tổng quan' : value === 'telemetry' ? 'Thông số' : value === 'control' ? 'Điều khiển' : value === 'config' ? 'Cấu hình thích ứng' : 'Lịch sử'}</button>)}</div>{message && <div className="notice success-text">{message}</div>}{tab === 'overview' && <Panel title="Latest telemetry" eyebrow="OVERVIEW"><TelemetryMetrics value={latest} /></Panel>}{tab === 'telemetry' && <Panel title="Telemetry history" eyebrow="LAST 200 POINTS"><TelemetryChart data={history} /></Panel>}{tab === 'control' && <Panel title="Điều khiển ánh sáng" eyebrow="CONTROL">{!isAdmin && device.device_status === 'OFFLINE' ? <EmptyState title="Thiết bị đang offline" message="Điều khiển sẽ được mở lại khi thiết bị kết nối." /> : <div className="control-surface"><div className="control-buttons"><button className="secondary-button" onClick={() => void send('ON')}>Bật đèn</button><button className="secondary-button" onClick={() => void send('OFF')}>Tắt đèn</button></div><label>Độ sáng <b>{pwm}%</b><input type="range" min="0" max="100" value={pwm} onChange={(event) => setPwm(Number(event.target.value))} /></label><button className="primary-button" onClick={() => void send('PWM')}>Áp dụng PWM</button></div>}</Panel>}{tab === 'config' && <Panel title="Adaptive Lighting" eyebrow="ADMIN"><pre className="config-preview">{JSON.stringify(device.adaptive_config ?? {}, null, 2)}</pre></Panel>}{tab === 'lifecycle' && <Panel title="Lifecycle" eyebrow="ADMIN"><p className="muted">Trạng thái hiện tại: <strong>{device.lifecycle_status}</strong>. Các transition hợp lệ sẽ được backend quyết định.</p></Panel>}</>; }
+function DeviceDetail({ deviceId, isAdmin }: { deviceId: string; isAdmin: boolean }) { const [device, setDevice] = useState<Device | null>(null); const [history, setHistory] = useState<Telemetry[]>([]); const [tab, setTab] = useState('overview'); const [pwm, setPwm] = useState(60); const [message, setMessage] = useState(''); useEffect(() => { void Promise.all([api.device(deviceId), api.telemetry(deviceId)]).then(([nextDevice, nextHistory]) => { setDevice(nextDevice); setHistory(nextHistory.data); }).catch((loadError: unknown) => setMessage(loadError instanceof Error ? loadError.message : 'Không tìm thấy thiết bị')); }, [deviceId]); if (message) return <ErrorState message={message} onRetry={() => window.location.reload()} />; if (!device) return <LoadingState />; const send = async (command: 'ON' | 'OFF' | 'PWM') => { try { await api.command(deviceId, command, command === 'PWM' ? pwm : undefined); setMessage('Đã gửi lệnh điều khiển.'); } catch (commandError) { setMessage(commandError instanceof Error ? commandError.message : 'Không gửi được lệnh'); } }; const latest = history.length ? history[history.length - 1] : null; return <><section className="page-heading"><div><button className="back-link" onClick={() => go('/devices')}>← Thiết bị</button><h1>{device.device_name}</h1><p className="muted">{device.device_id} · {device.location ?? 'Chưa gán vị trí'} · Firmware {device.firmware_version}</p></div><div className="status-stack"><StatusBadge value={device.device_status} label={device.device_status} /><StatusBadge value={device.lifecycle_status} label={device.lifecycle_status} /></div></section><div className="tabs">{['overview', 'telemetry', 'control', ...(isAdmin ? ['config', 'lifecycle'] : [])].map((value) => <button className={tab === value ? 'active' : ''} key={value} onClick={() => setTab(value)}>{value === 'overview' ? 'Tổng quan' : value === 'telemetry' ? 'Thông số' : value === 'control' ? 'Điều khiển' : value === 'config' ? 'Cấu hình thích ứng' : 'Lịch sử'}</button>)}</div>{message && <div className="notice success-text">{message}</div>}{tab === 'overview' && <Panel title="Latest telemetry" eyebrow="OVERVIEW"><TelemetryMetrics value={latest} /></Panel>}{tab === 'telemetry' && <Panel title="Telemetry history" eyebrow="LAST 200 POINTS"><TelemetryChart data={history} /></Panel>}{tab === 'control' && <Panel title="Điều khiển ánh sáng" eyebrow="CONTROL">{!isAdmin && device.device_status === 'OFFLINE' ? <EmptyState title="Thiết bị đang offline" message="Điều khiển sẽ được mở lại khi thiết bị kết nối." /> : <div className="control-surface"><div className="control-buttons"><button className="secondary-button" onClick={() => void send('ON')}>Bật đèn</button><button className="secondary-button" onClick={() => void send('OFF')}>Tắt đèn</button></div><label>Độ sáng <b>{pwm}%</b><input type="range" min="0" max="100" value={pwm} onChange={(event) => setPwm(Number(event.target.value))} /></label><button className="primary-button" onClick={() => void send('PWM')}>Áp dụng PWM</button></div>}</Panel>}{tab === 'config' && <Panel title="Adaptive Lighting" eyebrow="ADMIN"><pre className="config-preview">{JSON.stringify(device.adaptive_config ?? {}, null, 2)}</pre></Panel>}{tab === 'lifecycle' && <Panel title="Vòng đời thiết bị (Lifecycle)" eyebrow="QUẢN TRỊ"><div style={{ display: 'grid', gap: '16px', maxWidth: '640px' }}><p className="muted">Trạng thái hiện tại: <StatusBadge value={device.lifecycle_status} label={device.lifecycle_status} /></p>{device.lifecycle_status === 'REGISTERED' && <div style={{ background: '#f8fafc', padding: '16px', borderRadius: '8px', border: '1px solid #e2e8f0' }}><p style={{ margin: '0 0 12px', fontSize: '13px' }}>Thiết bị mới tạo, đang chờ nạp firmware. Sau khi bạn đã nạp <code>device_key</code> vào code ESP32, hãy chuyển sang trạng thái <strong>PROVISIONED</strong> để cho phép thiết bị kết nối MQTT.</p><button className="primary-button" onClick={async () => { try { await api.updateDeviceLifecycle(device.device_id, 'PROVISIONED'); setDevice((prev) => prev ? { ...prev, lifecycle_status: 'PROVISIONED' } : null); setMessage('Đã chuyển trạng thái sang PROVISIONED.'); } catch (err) { setMessage(err instanceof Error ? err.message : 'Lỗi chuyển trạng thái'); } }}>Chuyển sang Đã cấp khóa (PROVISIONED)</button></div>}{device.lifecycle_status === 'PROVISIONED' && <div style={{ background: '#eff6ff', padding: '16px', borderRadius: '8px', border: '1px solid #bfdbfe', color: '#1e40af', fontSize: '13px' }}>ℹ️ <strong>Đang chờ thiết bị kết nối lần đầu:</strong> Bật nguồn ESP32 để kết nối WiFi và MQTT. Khi nhận được tín hiệu heartbeat/telemetry đầu tiên, hệ thống sẽ tự động chuyển sang <strong>ACTIVE</strong>.</div>}{device.lifecycle_status === 'ACTIVE' && <div style={{ display: 'flex', gap: '10px' }}><button className="secondary-button" onClick={async () => { if (!window.confirm('Chuyển thiết bị sang trạng thái BẢO TRÌ? Thiết bị sẽ tạm thời bị ngắt kết nối.')) return; try { await api.updateDeviceLifecycle(device.device_id, 'MAINTENANCE'); setDevice((prev) => prev ? { ...prev, lifecycle_status: 'MAINTENANCE' } : null); setMessage('Đã chuyển sang trạng thái BẢO TRÌ.'); } catch (err) { setMessage(err instanceof Error ? err.message : 'Lỗi chuyển trạng thái'); } }}>Chuyển sang Bảo trì (MAINTENANCE)</button><button className="table-button" style={{ color: '#dc2626', borderColor: '#fca5a5' }} onClick={async () => { const confirmId = window.prompt(`CẢNH BÁO: Thu hồi thiết bị là vĩnh viễn không thể đảo ngược!\nNhập lại ID thiết bị (${device.device_id}) để xác nhận:`); if (confirmId !== device.device_id) return; try { await api.updateDeviceLifecycle(device.device_id, 'DECOMMISSIONED'); setDevice((prev) => prev ? { ...prev, lifecycle_status: 'DECOMMISSIONED' } : null); setMessage('Đã thu hồi thiết bị vĩnh viễn.'); } catch (err) { setMessage(err instanceof Error ? err.message : 'Lỗi thu hồi'); } }}>Thu hồi vĩnh viễn (DECOMMISSIONED)</button></div>}{device.lifecycle_status === 'MAINTENANCE' && <div style={{ display: 'flex', gap: '10px' }}><button className="primary-button" onClick={async () => { try { await api.updateDeviceLifecycle(device.device_id, 'ACTIVE'); setDevice((prev) => prev ? { ...prev, lifecycle_status: 'ACTIVE' } : null); setMessage('Đã kích hoạt lại thiết bị.'); } catch (err) { setMessage(err instanceof Error ? err.message : 'Lỗi kích hoạt'); } }}>Kích hoạt lại (ACTIVE)</button><button className="table-button" style={{ color: '#dc2626', borderColor: '#fca5a5' }} onClick={async () => { const confirmId = window.prompt(`CẢNH BÁO: Thu hồi thiết bị là vĩnh viễn không thể đảo ngược!\nNhập lại ID thiết bị (${device.device_id}) để xác nhận:`); if (confirmId !== device.device_id) return; try { await api.updateDeviceLifecycle(device.device_id, 'DECOMMISSIONED'); setDevice((prev) => prev ? { ...prev, lifecycle_status: 'DECOMMISSIONED' } : null); setMessage('Đã thu hồi thiết bị.'); } catch (err) { setMessage(err instanceof Error ? err.message : 'Lỗi thu hồi'); } }}>Thu hồi vĩnh viễn (DECOMMISSIONED)</button></div>}{device.lifecycle_status === 'DECOMMISSIONED' && <p className="form-hint error-text">Thiết bị này đã bị thu hồi vĩnh viễn và không thể đảo ngược trạng thái.</p>}</div></Panel>}</>; }
 
 function AlertsPage({ alerts, total, canAct, onReload }: { alerts: Alert[]; total: number; canAct: boolean; onReload: () => void }) { const [status, setStatus] = useState(''); const [severity, setSeverity] = useState(''); const shown = alerts.filter((alert) => (!status || alert.status === status) && (!severity || alert.severity === severity)); const act = async (alert: Alert, action: 'acknowledge' | 'resolve') => { if (action === 'acknowledge') await api.acknowledgeAlert(alert.alert_id); else await api.resolveAlert(alert.alert_id); onReload(); }; return <><section className="page-heading"><div><p className="eyebrow">VẬN HÀNH</p><h1>Cảnh báo</h1><p className="muted">{total} cảnh báo theo phạm vi thiết bị của bạn.</p></div></section><Panel title="Bộ lọc" eyebrow="BỘ LỌC"><div className="filter-bar"><label>Trạng thái<select value={status} onChange={(event) => setStatus(event.target.value)}><option value="">Tất cả</option><option value="NEW">Mới</option><option value="ACKNOWLEDGED">Đã xác nhận</option><option value="RESOLVED">Đã xử lý</option></select></label><label>Mức độ<select value={severity} onChange={(event) => setSeverity(event.target.value)}><option value="">Tất cả</option>{['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'].map((value) => <option key={value}>{value}</option>)}</select></label></div></Panel><Panel title="Danh sách cảnh báo" eyebrow="CẢNH BÁO"><div className="data-table"><div className="table-header"><span>Cảnh báo</span><span>Mức độ</span><span>Trạng thái</span><span>Thời gian</span><span>Thao tác</span></div>{shown.map((alert) => <div className="table-row" key={alert.alert_id}><span><strong>{alert.alert_type}</strong><small>{alert.device_id} · {alert.message}</small></span><StatusBadge value={alert.severity} label={alert.severity} /><StatusBadge value={alert.status} label={alert.status} /><span>{relativeTime(alert.created_at)}</span><span className="row-actions">{canAct && alert.status === 'NEW' && <button className="table-button" onClick={() => void act(alert, 'acknowledge')}>Xác nhận</button>}{canAct && alert.status !== 'RESOLVED' && <button className="table-button" onClick={() => void act(alert, 'resolve')}>Giải quyết</button>}</span></div>)}{!shown.length && <EmptyState title="Không có cảnh báo nào" message="Các cảnh báo mới sẽ xuất hiện ở đây." />}</div></Panel></>; }
 function AuditPage({ logs, total }: { logs: AuditLog[]; total: number }) { return <><section className="page-heading"><div><p className="eyebrow">ADMINISTRATION</p><h1>Audit Log</h1><p className="muted">{total} hoạt động được ghi nhận.</p></div></section><Panel title="Nhật ký hoạt động" eyebrow="KIỂM TOÁN"><div className="data-table"><div className="table-header"><span>Thời gian</span><span>Hành động</span><span>Thiết bị</span><span>Mô tả</span></div>{logs.map((log) => <div className="table-row" key={log.log_id}><span>{new Date(log.created_at).toLocaleString('vi-VN')}</span><strong>{log.action}</strong><span>{log.device_id ?? '--'}</span><span>{log.description ?? '--'}</span></div>)}</div></Panel></>; }
@@ -78,6 +79,236 @@ function DeviceOnboardFixed({ open, onClose, onSubmit }: { open: boolean; onClos
 
   if (!open) return null;
   return <div className="modal-backdrop"><form className="modal" onSubmit={submit}><div className="panel-heading"><h2>Onboarding thiết bị</h2><button type="button" className="icon-button" aria-label="Đóng" onClick={onClose}>×</button></div><label>ID thiết bị<input value={form.device_id} onChange={(event) => setForm((prev) => ({ ...prev, device_id: event.target.value }))} required /></label><label>Tên thiết bị<input value={form.device_name} onChange={(event) => setForm((prev) => ({ ...prev, device_name: event.target.value }))} required /></label><label>Vị trí<input value={form.location} onChange={(event) => setForm((prev) => ({ ...prev, location: event.target.value }))} /></label><label>Người phụ trách<select value={form.assigned_user_id} onChange={(event) => setForm((prev) => ({ ...prev, assigned_user_id: event.target.value }))}><option value="">Chưa gán</option>{users.map((user) => <option value={user.user_id} key={user.user_id}>{user.username} ({user.role_name})</option>)}</select></label>{error && <p className="form-hint error-text">{error}</p>}<button className="primary-button" disabled={busy}>{busy ? 'Đang tạo...' : 'Tạo thiết bị'}</button></form></div>;
+}
+
+function ProvisioningModal({
+  result,
+  onClose,
+  onStatusUpdated,
+}: {
+  result: DeviceOnboardResult;
+  onClose: () => void;
+  onStatusUpdated: (newStatus: string) => void;
+}) {
+  const [wifiSsid, setWifiSsid] = useState('SANG LE');
+  const [wifiPass, setWifiPass] = useState('88888888');
+  const [brokerHost, setBrokerHost] = useState(window.location.hostname || '172.24.208.1');
+  const [copiedKey, setCopiedKey] = useState(false);
+  const [copiedConfig, setCopiedConfig] = useState(false);
+  const [provisioning, setProvisioning] = useState(false);
+  const [provisioned, setProvisioned] = useState(false);
+  const [error, setError] = useState('');
+
+  const configContent = `#ifndef CONFIG_H
+#define CONFIG_H
+
+#include <Arduino.h>
+
+// ==========================================
+// Wi-Fi Configuration
+// ==========================================
+#ifndef WIFI_SSID
+#define WIFI_SSID "${wifiSsid}"
+#endif
+
+#ifndef WIFI_PASSWORD
+#define WIFI_PASSWORD "${wifiPass}"
+#endif
+
+// ==========================================
+// MQTT Broker Configuration
+// ==========================================
+#ifndef MQTT_BROKER_HOST
+#define MQTT_BROKER_HOST "${brokerHost}"
+#endif
+
+#ifndef MQTT_BROKER_PORT
+#define MQTT_BROKER_PORT 1883
+#endif
+
+#ifndef DEVICE_ID
+#define DEVICE_ID "${result.device_id}"
+#endif
+
+#ifndef MQTT_DEVICE_PASSWORD
+#define MQTT_DEVICE_PASSWORD "${result.device_key}"
+#endif
+
+#define FIRMWARE_VERSION "1.0.0"
+
+// Hardware Pinout Definitions
+constexpr uint8_t ONBOARD_LED_PIN = 2;
+constexpr uint8_t I2C_SDA_PIN = 21;
+constexpr uint8_t I2C_SCL_PIN = 22;
+constexpr uint8_t MOTION_PIN = 19;
+constexpr uint8_t PWM_PIN = 18;
+constexpr uint8_t PWM_CHANNEL = 0;
+
+// I2C Addresses
+constexpr uint8_t BH1750_I2C_ADDRESS = 0x23;
+constexpr uint8_t INA219_I2C_ADDRESS = 0x40;
+
+// PWM Configuration (5 kHz, 8-bit: 0-255)
+constexpr uint32_t PWM_FREQUENCY_HZ = 5000;
+constexpr uint8_t PWM_RESOLUTION_BITS = 8;
+
+// Timing Constants (milliseconds)
+constexpr uint32_t DEFAULT_MOTION_TIMEOUT_SEC = 30;
+constexpr uint32_t TELEMETRY_INTERVAL_MS = 5000;
+constexpr uint32_t HEARTBEAT_INTERVAL_MS = 10000;
+constexpr uint32_t ADAPTIVE_INTERVAL_MS = 1000;
+
+#endif // CONFIG_H
+`;
+
+  const copyKey = async () => {
+    try {
+      await navigator.clipboard.writeText(result.device_key);
+      setCopiedKey(true);
+      setTimeout(() => setCopiedKey(false), 2000);
+    } catch {
+      setError('Không thể sao chép vào clipboard');
+    }
+  };
+
+  const copyConfig = async () => {
+    try {
+      await navigator.clipboard.writeText(configContent);
+      setCopiedConfig(true);
+      setTimeout(() => setCopiedConfig(false), 2000);
+    } catch {
+      setError('Không thể sao chép vào clipboard');
+    }
+  };
+
+  const downloadConfig = () => {
+    const element = document.createElement('a');
+    const file = new Blob([configContent], { type: 'text/plain;charset=utf-8' });
+    element.href = URL.createObjectURL(file);
+    element.download = 'config.h';
+    document.body.appendChild(element);
+    element.click();
+    document.body.removeChild(element);
+  };
+
+  const markAsProvisioned = async () => {
+    setProvisioning(true);
+    setError('');
+    try {
+      await api.updateDeviceLifecycle(result.device_id, 'PROVISIONED');
+      setProvisioned(true);
+      onStatusUpdated('PROVISIONED');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Không thể cập nhật trạng thái');
+    } finally {
+      setProvisioning(false);
+    }
+  };
+
+  const handleClose = () => {
+    if (!provisioned && !window.confirm('Khóa bí mật chỉ hiển thị 1 lần duy nhất này. Bạn đã sao chép hoặc tải về file config.h chưa?')) {
+      return;
+    }
+    onClose();
+  };
+
+  return (
+    <div className="modal-backdrop">
+      <div className="modal" style={{ maxWidth: '640px', width: '100%', maxHeight: '90vh', overflowY: 'auto' }}>
+        <div className="panel-heading">
+          <div>
+            <span className="section-kicker" style={{ color: '#16a34a' }}>THÀNH CÔNG · BÁN TỰ ĐỘNG</span>
+            <h2>Cấp phát & Xuất cấu hình Firmware</h2>
+          </div>
+          <button type="button" className="icon-button" aria-label="Đóng" onClick={handleClose}>×</button>
+        </div>
+
+        <div style={{ background: '#fef2f2', border: '1px solid #fecaca', padding: '12px 14px', borderRadius: '8px', fontSize: '13px', color: '#991b1b' }}>
+          ⚠️ <strong>Lưu ý quan trọng:</strong> Khóa bí mật <code>device_key</code> chỉ hiển thị duy nhất 1 lần tại bước này và không thể xem lại sau khi đóng.
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+          <div>
+            <label>ID Thiết bị</label>
+            <input value={result.device_id} readOnly style={{ background: '#f1f5f9' }} />
+          </div>
+          <div>
+            <label>Tên thiết bị</label>
+            <input value={result.device_name} readOnly style={{ background: '#f1f5f9' }} />
+          </div>
+        </div>
+
+        <div>
+          <label style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span>Khóa bảo mật (device_key)</span>
+            <button type="button" className="table-button" onClick={copyKey}>
+              {copiedKey ? '✓ Đã chép' : 'Sao chép khóa'}
+            </button>
+          </label>
+          <input value={result.device_key} readOnly style={{ background: '#f8fafc', fontFamily: 'monospace', fontSize: '12px' }} />
+        </div>
+
+        <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: '14px' }}>
+          <h3 style={{ fontSize: '14px', margin: '0 0 10px', color: '#0f172a' }}>⚙️ Tùy chỉnh thông số mạng cho Firmware</h3>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+            <label>
+              Tên Wi-Fi (SSID)
+              <input value={wifiSsid} onChange={(e) => setWifiSsid(e.target.value)} />
+            </label>
+            <label>
+              Mật khẩu Wi-Fi
+              <input type="password" value={wifiPass} onChange={(e) => setWifiPass(e.target.value)} />
+            </label>
+          </div>
+          <div style={{ marginTop: '10px' }}>
+            <label>
+              Địa chỉ IP Broker MQTT (Máy tính chạy server)
+              <input value={brokerHost} onChange={(e) => setBrokerHost(e.target.value)} />
+            </label>
+          </div>
+        </div>
+
+        <div>
+          <label style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+            <span>Xem trước file <code>config.h</code></span>
+            <div style={{ display: 'flex', gap: '6px' }}>
+              <button type="button" className="table-button" onClick={copyConfig}>
+                {copiedConfig ? '✓ Đã chép code' : 'Sao chép config.h'}
+              </button>
+              <button type="button" className="secondary-button" style={{ padding: '6px 10px', fontSize: '11px' }} onClick={downloadConfig}>
+                📥 Tải về config.h
+              </button>
+            </div>
+          </label>
+          <pre style={{ maxHeight: '140px', overflow: 'auto', background: '#0f172a', color: '#38bdf8', padding: '12px', borderRadius: '8px', fontSize: '11px', margin: 0 }}>
+            {configContent}
+          </pre>
+        </div>
+
+        {error && <p className="form-hint error-text">{error}</p>}
+
+        <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          {provisioned ? (
+            <span className="success-text" style={{ fontWeight: 600 }}>
+              ✓ Đã chuyển trạng thái sang PROVISIONED!
+            </span>
+          ) : (
+            <button
+              type="button"
+              className="primary-button"
+              disabled={provisioning}
+              onClick={markAsProvisioned}
+            >
+              {provisioning ? 'Đang cập nhật...' : 'Xác nhận & Chuyển sang PROVISIONED'}
+            </button>
+          )}
+          <button type="button" className="secondary-button" onClick={handleClose}>
+            Đóng
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function Panel({ title, eyebrow, action, children }: { title: string; eyebrow?: string; action?: ReactNode; children: ReactNode }) { return <section className="panel"><div className="panel-heading"><div>{eyebrow && <span className="section-kicker">{eyebrow}</span>}<h2>{title}</h2></div>{action}</div>{children}</section>; }

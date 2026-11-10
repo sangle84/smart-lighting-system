@@ -98,7 +98,7 @@ export interface AuditLog {
   created_at: string;
 }
 
-const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:3000';
+const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:3100';
 
 let accessToken: string | null = null;
 
@@ -196,6 +196,14 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(input),
     }),
+  updateDeviceLifecycle: (deviceId: string, lifecycle_status: string) =>
+    request<{ device_id: string; lifecycle_status: string; updated_at: string }>(
+      `/devices/${deviceId}/lifecycle`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify({ lifecycle_status }),
+      }
+    ),
 };
 
 export { API_URL };
