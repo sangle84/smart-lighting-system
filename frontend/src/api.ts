@@ -16,6 +16,14 @@ export interface ManagedUser {
   updated_at?: string;
 }
 
+export interface DeviceOnboardResult {
+  device_id: string;
+  device_name: string;
+  lifecycle_status: string;
+  device_key: string;
+  created_at: string;
+}
+
 export interface Device {
   device_id: string;
   device_name: string;
@@ -182,6 +190,11 @@ export const api = {
     request(`/devices/${deviceId}/commands`, {
       method: 'POST',
       body: JSON.stringify({ command_type, ...(command_value === undefined ? {} : { command_value }) }),
+    }),
+  createDevice: (input: { device_id: string; device_name: string; location?: string; assigned_user_id?: string }) =>
+    request<DeviceOnboardResult>('/devices', {
+      method: 'POST',
+      body: JSON.stringify(input),
     }),
 };
 
