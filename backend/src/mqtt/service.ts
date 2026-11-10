@@ -40,6 +40,15 @@ interface PendingCommand {
   resolve: (ack: AckPayload) => void;
 }
 
+export interface ConfigPayload {
+  config_version: number;
+  enabled: boolean;
+  motion_timeout_sec: number;
+  lux_thresholds: Array<{ min_lux: number; pwm: number }>;
+  no_motion_pwm: number;
+  timestamp: string;
+}
+
 export class MqttService implements CommandPublisher {
   private client: MqttClient | null = null;
   private readonly pending = new Map<string, PendingCommand>();
@@ -137,6 +146,21 @@ export class MqttService implements CommandPublisher {
     }
     this.client?.end();
     this.client = null;
+  }
+
+  async publishConfig(deviceId: string, config: ConfigPayload): Promise<void> {
+    if (!this.client?.connected) {
+      throw new Error('MQTT client is not connected');
+    }
+
+    const topic = `${TOPIC_PREFIX}${deviceId}/config`;
+    const payload = JSON.stringify(config);
+
+    try {
+      await this.publishMessage(topic, payload);
+    } catch (error) {
+      throw new Error(`MQTT publish failed: ${error instanceof Error ? error.message : 'unknown error'}`);
+    }
   }
 
   private async handleMessage(topic: string, rawPayload: string): Promise<void> {

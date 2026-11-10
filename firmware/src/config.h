@@ -7,7 +7,7 @@
 // Wi-Fi Configuration
 // ==========================================
 #ifndef WIFI_SSID
-#define WIFI_SSID "SANG LE"
+#define WIFI_SSID "Sang Le"
 #endif
 
 #ifndef WIFI_PASSWORD
@@ -18,7 +18,7 @@
 // MQTT Broker Configuration
 // ==========================================
 #ifndef MQTT_BROKER_HOST
-#define MQTT_BROKER_HOST "172.24.208.1"  // IP LAN hiện tại của máy chạy Mosquitto
+#define MQTT_BROKER_HOST "192.168.1.238"  // IP LAN hiện tại của máy chạy Mosquitto
 #endif
 
 #ifndef MQTT_BROKER_PORT
