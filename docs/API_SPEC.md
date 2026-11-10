@@ -95,10 +95,16 @@ Quy ước chung: "Quyền" (Authorization) lấy theo bảng mục 3.3.3 của 
   {
     "access_token": "eyJhbGciOi...",
     "token_type": "Bearer",
-    "expires_in": 900
+    "expires_in": 900,
+    "user": {
+      "user_id": "c3b88939-2a94-4d47-9759-338276f50b4a",
+      "username": "admin",
+      "email": "admin@smartlighting.local",
+      "role": "ADMIN"
+    }
   }
   ```
-- **Error cases: [ĐÃ BỔ SUNG]** `401 Unauthorized`: Refresh token thiếu, không hợp lệ hoặc đã hết hạn (buộc người dùng đăng nhập lại).
+- **Error cases: [ĐÃ BỔ SUNG]** `401 Unauthorized`: Refresh token thiếu, không hợp lệ, đã hết hạn hoặc tài khoản không còn khả dụng (buộc người dùng đăng nhập lại).
 - *Lý do/Rationale:* Bắt buộc phải có để hiện thực hóa cơ chế Access Token (ngắn hạn 15 phút) kết hợp Refresh Token (dài hạn 7 ngày trong HttpOnly Cookie) theo đúng `PROJECT-RULES.md`, phục vụ lập trình interceptor tự động refresh token ở Frontend.
 
 #### `POST /auth/logout`

@@ -7,18 +7,18 @@
 // Wi-Fi Configuration
 // ==========================================
 #ifndef WIFI_SSID
-#define WIFI_SSID "Wokwi-GUEST"
+#define WIFI_SSID "SANG LE"
 #endif
 
 #ifndef WIFI_PASSWORD
-#define WIFI_PASSWORD ""
+#define WIFI_PASSWORD "88888888"
 #endif
 
 // ==========================================
 // MQTT Broker Configuration
 // ==========================================
 #ifndef MQTT_BROKER_HOST
-#define MQTT_BROKER_HOST "192.168.1.100"  // Thay đổi thành IP máy tính chạy Mosquitto
+#define MQTT_BROKER_HOST "172.24.208.1"  // IP LAN hiện tại của máy chạy Mosquitto
 #endif
 
 #ifndef MQTT_BROKER_PORT
@@ -30,7 +30,7 @@
 #endif
 
 #ifndef MQTT_DEVICE_PASSWORD
-#define MQTT_DEVICE_PASSWORD "replace-with-light-001-password"
+#define MQTT_DEVICE_PASSWORD "light001-secret-pass"
 #endif
 
 #define FIRMWARE_VERSION "1.0.0"
