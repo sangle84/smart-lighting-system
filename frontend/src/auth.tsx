@@ -17,7 +17,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!getAccessToken()) {
       api.refresh()
-        .then((result) => setAccessToken(result.access_token))
+        .then((result) => {
+          setAccessToken(result.access_token);
+          setUser(result.user);
+        })
         .catch(() => undefined)
         .finally(() => setLoading(false));
     } else {

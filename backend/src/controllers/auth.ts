@@ -114,11 +114,23 @@ export class AuthController {
 
       // Generate access token mới
       const accessToken = createAccessToken({ sub: payload.sub, role: payload.role });
+      const user = await this.userRepo.findById(payload.sub);
+
+      if (!user || user.status === 'LOCKED') {
+        next(new AppError(ErrorCode.UNAUTHORIZED, 'Tài khoản không còn khả dụng'));
+        return;
+      }
 
       res.json({
         access_token: accessToken.token,
         token_type: 'Bearer',
         expires_in: accessToken.expiresIn,
+        user: {
+          user_id: user.user_id,
+          username: user.username,
+          email: user.email,
+          role: user.role_name,
+        },
       });
     } catch (err) {
       next(new AppError(ErrorCode.UNAUTHORIZED, 'Refresh token không hợp lệ hoặc đã hết hạn'));

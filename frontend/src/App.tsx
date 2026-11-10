@@ -1,310 +1,53 @@
-import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import { io, type Socket } from 'socket.io-client';
 import { Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { api, API_URL, getAccessToken, type Device, type ManagedUser, type Telemetry } from './api';
+import { api, API_URL, getAccessToken, type Alert, type AuditLog, type DashboardDevice, type DashboardSummary, type Device, type ManagedUser, type Telemetry } from './api';
 import { AuthProvider, useAuth } from './auth';
 
+type Route = { name: 'dashboard' | 'devices' | 'device' | 'alerts' | 'users' | 'audit'; deviceId?: string };
+function currentRoute(): Route { const parts = window.location.pathname.split('/').filter(Boolean); if (parts[0] === 'devices' && parts[1]) return { name: 'device', deviceId: decodeURIComponent(parts[1]) }; if (parts[0] === 'devices') return { name: 'devices' }; if (parts[0] === 'alerts') return { name: 'alerts' }; if (parts[0] === 'users') return { name: 'users' }; if (parts[0] === 'audit-logs') return { name: 'audit' }; return { name: 'dashboard' }; }
+function go(path: string): void { window.history.pushState({}, '', path); window.dispatchEvent(new PopStateEvent('popstate')); }
+
 function LoginScreen() {
-  const { login } = useAuth();
-  const [username, setUsername] = useState('admin');
-  const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
-  const [busy, setBusy] = useState(false);
-
-  async function submit(event: FormEvent) {
-    event.preventDefault();
-    setError('');
-    setBusy(true);
-    try {
-      await login(username, password);
-    } catch (loginError) {
-      setError(loginError instanceof Error ? loginError.message : 'Đăng nhập thất bại');
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <main className="login-page">
-      <section className="login-panel">
-        <div className="brand-mark">SL</div>
-        <p className="eyebrow">SMART LIGHTING SYSTEM</p>
-        <h1>Điều khiển ánh sáng, rõ từng nhịp.</h1>
-        <p className="muted">Đăng nhập để theo dõi thiết bị và dữ liệu cảm biến theo thời gian thực.</p>
-        <form onSubmit={submit} className="login-form">
-          <label>Tên đăng nhập<input value={username} onChange={(event) => setUsername(event.target.value)} autoComplete="username" required /></label>
-          <label>Mật khẩu<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" required /></label>
-          {error && <p className="error-text">{error}</p>}
-          <button className="primary-button" disabled={busy}>{busy ? 'Đang xác thực...' : 'Đăng nhập'}</button>
-        </form>
-      </section>
-      <aside className="login-aside"><span>LIVE MONITORING</span><strong>Ánh sáng<br />đúng lúc.</strong><p>Telemetry, trạng thái và quyền điều khiển trong một mặt phẳng vận hành.</p></aside>
-    </main>
-  );
+  const { login } = useAuth(); const [username, setUsername] = useState('admin'); const [password, setPassword] = useState(''); const [error, setError] = useState(''); const [busy, setBusy] = useState(false);
+  async function submit(event: FormEvent) { event.preventDefault(); setBusy(true); setError(''); try { await login(username, password); } catch (loginError) { setError(loginError instanceof Error ? loginError.message : 'Đăng nhập thất bại'); } finally { setBusy(false); } }
+  return <main className="login-page"><section className="login-panel"><div className="brand-mark">SL</div><p className="eyebrow">SMART LIGHTING SYSTEM</p><h1>Điều khiển ánh sáng, rõ từng nhịp.</h1><p className="muted">Đăng nhập để theo dõi thiết bị và dữ liệu cảm biến theo thời gian thực.</p><form onSubmit={submit} className="login-form"><label>Tên đăng nhập<input value={username} onChange={(event) => setUsername(event.target.value)} autoComplete="username" required /></label><label>Mật khẩu<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" required /></label>{error && <ErrorState message={error} />}<button className="primary-button" disabled={busy}>{busy ? 'Đang xác thực...' : 'Đăng nhập'}</button></form></section><aside className="login-aside"><span>LIVE MONITORING</span><strong>Ánh sáng<br />đúng lúc.</strong><p>Telemetry, trạng thái và quyền điều khiển trong một mặt phẳng vận hành.</p></aside></main>;
 }
 
-function Dashboard() {
-  const { user, logout } = useAuth();
-  type View = 'dashboard' | 'devices' | 'alerts' | 'users';
-  const getView = (): View => {
-    const hash = window.location.hash.slice(1);
-    return hash === 'devices' || hash === 'alerts' || hash === 'users' ? hash : 'dashboard';
-  };
-  const [view, setView] = useState<View>(getView);
-  const [devices, setDevices] = useState<Device[]>([]);
-  const [selectedId, setSelectedId] = useState('');
-  const [telemetry, setTelemetry] = useState<Telemetry | null>(null);
-  const [history, setHistory] = useState<Telemetry[]>([]);
-  const [notice, setNotice] = useState('');
-  const [error, setError] = useState('');
-  const [passwordOpen, setPasswordOpen] = useState(false);
-  const [newPwm, setNewPwm] = useState(60);
-
-  const selected = useMemo(() => devices.find((device) => device.device_id === selectedId), [devices, selectedId]);
-
-  useEffect(() => {
-    const handleHashChange = () => setView(getView());
-    window.addEventListener('hashchange', handleHashChange);
-    return () => window.removeEventListener('hashchange', handleHashChange);
-  }, []);
-
-  useEffect(() => {
-    if (!user) return;
-    api.devices()
-      .then((result) => {
-        setDevices(result.data);
-        setSelectedId(result.data[0]?.device_id ?? '');
-      })
-      .catch((loadError) => setError(loadError instanceof Error ? loadError.message : 'Không tải được thiết bị'));
-  }, [user]);
-
-  useEffect(() => {
-    if (!selectedId || (view !== 'dashboard' && view !== 'devices')) return;
-    api.latestTelemetry(selectedId)
-      .then((value) => {
-        setTelemetry(value);
-        setHistory([value]);
-      })
-      .catch(() => {
-        setTelemetry(null);
-        setHistory([]);
-      });
-  }, [selectedId, view]);
-
-  useEffect(() => {
-    if (!selectedId || (view !== 'dashboard' && view !== 'devices')) return;
-    const socket: Socket = io(API_URL, { auth: { token: getAccessToken() }, withCredentials: true });
-    socket.on('telemetry:update', (value: Telemetry) => {
-      if (value.device_id === selectedId) {
-        setTelemetry(value);
-        setHistory((previous) => [...previous.slice(-19), value]);
-      }
-    });
-    socket.on('device:status', (value: Partial<Device> & { device_id: string }) => {
-      setDevices((previous) => previous.map((device) => device.device_id === value.device_id ? { ...device, ...value } : device));
-    });
-    socket.on('connect_error', () => setError('Realtime chưa kết nối. Dữ liệu REST vẫn hoạt động.'));
-    return () => {
-      socket.close();
-    };
-  }, [selectedId, view]);
-
-  async function sendCommand(command_type: 'ON' | 'OFF' | 'PWM', command_value?: number) {
-    if (!selectedId) return;
-    try {
-      await api.command(selectedId, command_type, command_value);
-      setNotice(command_type === 'PWM' ? `Đã gửi PWM ${command_value}%` : `Đã gửi lệnh ${command_type}`);
-      setTimeout(() => setNotice(''), 3000);
-    } catch (commandError) {
-      setError(commandError instanceof Error ? commandError.message : 'Không gửi được lệnh');
-    }
-  }
-
-  if (!user) return <LoginScreen />;
-
-  const pageTitles: Record<View, string> = {
-    dashboard: 'Tổng quan',
-    devices: 'Thiết bị',
-    alerts: 'Cảnh báo',
-    users: 'Người dùng',
-  };
-
-  return (
-    <div className="app-shell">
-      <aside className="sidebar">
-        <div className="sidebar-brand"><div className="brand-mark small">SL</div><div><strong>Smart Light</strong><span>Control room</span></div></div>
-        <nav><a className={`nav-item ${view === 'dashboard' ? 'active' : ''}`} href="#dashboard"><span>◈</span> Tổng quan</a><a className={`nav-item ${view === 'devices' ? 'active' : ''}`} href="#devices"><span>⌘</span> Thiết bị</a><a className={`nav-item ${view === 'alerts' ? 'active' : ''}`} href="#alerts"><span>!</span> Cảnh báo</a>{user.role === 'ADMIN' && <a className={`nav-item ${view === 'users' ? 'active' : ''}`} href="#users"><span>♙</span> Người dùng</a>}</nav>
-        <div className="sidebar-footer"><div className="connection-dot"><i /> Hệ thống đang trực tuyến</div><button className="text-button" onClick={() => void logout()}>Đăng xuất</button></div>
-      </aside>
-      <main className="content" id={view}>
-        <header className="topbar"><div><p className="eyebrow">CONTROL ROOM / {pageTitles[view].toUpperCase()}</p><h2>{pageTitles[view]} · {user.username}</h2></div><div className="top-actions"><span className="role-pill">{user.role}</span><button className="icon-button" title="Đổi mật khẩu" onClick={() => setPasswordOpen(true)}>•••</button></div></header>
-        {error && <div className="notice error-text">{error}</div>}
-        {notice && <div className="notice success-text">{notice}</div>}
-        {view === 'dashboard' && <>
-          <section className="hero-row"><div><span className="section-kicker">LIVE OVERVIEW</span><h1>Không gian sáng<br /><em>theo cách của bạn.</em></h1></div><div className="hero-stat"><span>Thiết bị đang quản lý</span><strong>{devices.length.toString().padStart(2, '0')}</strong><small>{devices.filter((device) => device.device_status === 'ONLINE').length} online hiện tại</small></div></section>
-          <section className="overview-grid"><div className="panel overview-panel"><span className="section-kicker">CONTROL ROOM</span><h3>Trung tâm vận hành</h3><p className="muted">Chọn một khu vực trong menu để theo dõi thiết bị, xử lý cảnh báo hoặc quản lý tài khoản.</p></div><div className="panel overview-stat-grid"><div><span>Thiết bị</span><strong>{devices.length}</strong></div><div><span>Đang online</span><strong>{devices.filter((device) => device.device_status === 'ONLINE').length}</strong></div><div><span>Vai trò</span><strong>{user.role}</strong></div></div></section>
-        </>}
-        {view === 'devices' && <>
-        <section className="hero-row"><div><span className="section-kicker">DEVICE CONTROL</span><h1>Thiết bị<br /><em>theo thời gian thực.</em></h1></div><div className="hero-stat"><span>Thiết bị đang quản lý</span><strong>{devices.length.toString().padStart(2, '0')}</strong><small>{devices.filter((device) => device.device_status === 'ONLINE').length} online hiện tại</small></div></section>
-        <section className="dashboard-grid">
-          <div className="panel device-panel" id="devices"><div className="panel-heading"><div><span className="section-kicker">DEVICES</span><h3>Thiết bị</h3></div><span className="count-label">{devices.length} total</span></div><div className="device-list">{devices.map((device) => <button key={device.device_id} className={`device-row ${device.device_id === selectedId ? 'selected' : ''}`} onClick={() => setSelectedId(device.device_id)}><span className={`status-dot ${device.device_status.toLowerCase()}`} /><span className="device-copy"><strong>{device.device_name}</strong><small>{device.device_id} · {device.location ?? 'Chưa gán vị trí'}</small></span><span className="device-state">{device.device_status}</span></button>)}{devices.length === 0 && <p className="empty">Chưa có thiết bị được cấp quyền.</p>}</div></div>
-          <div className="panel telemetry-panel"><div className="panel-heading"><div><span className="section-kicker">SELECTED DEVICE</span><h3>{selected?.device_name ?? 'Chưa chọn thiết bị'}</h3></div>{selected && <span className={`status-badge ${selected.device_status.toLowerCase()}`}><i /> {selected.device_status}</span>}</div><div className="metric-grid"><Metric label="Độ sáng" value={telemetry ? `${Number(telemetry.lux).toFixed(1)} lx` : '--'} /><Metric label="Công suất" value={telemetry ? `${Number(telemetry.power).toFixed(2)} W` : '--'} /><Metric label="Điện áp" value={telemetry ? `${Number(telemetry.voltage).toFixed(1)} V` : '--'} /><Metric label="Chuyển động" value={telemetry ? (telemetry.motion ? 'Phát hiện' : 'Ổn định') : '--'} /></div><div className="chart-wrap"><ResponsiveContainer width="100%" height="100%"><LineChart data={history}><XAxis dataKey="timestamp" hide /><YAxis hide domain={[0, 'auto']} /><Tooltip contentStyle={{ background: '#18211e', border: 0, borderRadius: 8 }} formatter={(value: number) => [`${value} lx`, 'Lux']} /><Line type="monotone" dataKey="lux" stroke="#d5f36b" strokeWidth={3} dot={false} /></LineChart></ResponsiveContainer>{history.length < 2 && <span className="chart-placeholder">Đang chờ telemetry realtime</span>}</div></div>
-          <div className="panel control-panel"><div className="panel-heading"><div><span className="section-kicker">CONTROL</span><h3>Điều khiển ánh sáng</h3></div><span className="lock-label">{user.role === 'VIEWER' ? 'Chỉ xem' : 'Cho phép'}</span></div>{user.role === 'VIEWER' ? <div className="viewer-message">Bạn có quyền giám sát thiết bị, nhưng không có quyền gửi lệnh.</div> : <><div className="control-buttons"><button onClick={() => void sendCommand('ON')}>Bật đèn</button><button onClick={() => void sendCommand('OFF')}>Tắt đèn</button></div><label className="range-label">Độ sáng <strong>{newPwm}%</strong><input type="range" min="0" max="100" value={newPwm} onChange={(event) => setNewPwm(Number(event.target.value))} /></label><button className="primary-button full" onClick={() => void sendCommand('PWM', newPwm)}>Gửi mức PWM</button></>}</div>
-        </section>
-        </>}
-        {/* Alerts Section */}
-      {view === 'alerts' && <section className="panel alerts-panel">
-  <div className="panel-heading"><div><span className="section-kicker">ALERTS</span><h3>Cảnh báo</h3></div></div>
-  <div className="panel-content">
-    {/* TODO: Replace with real alerts list */}
-    <p className="muted">Chưa có cảnh báo nào.</p>
-  </div>
-</section>}
-{/* Users Section (Admin only) */}
-{view === 'users' && user.role === 'ADMIN' && (
-  <section className="panel users-panel">
-    <UserManagement />
-  </section>
-)}
-<footer className="page-footer"><span>SMART LIGHTING SYSTEM · PROTOTYPE</span><span>REST SOURCE OF TRUTH · SOCKET.IO LIVE</span></footer>
-      </main>
-      {passwordOpen && <ChangePassword onClose={() => setPasswordOpen(false)} />}
-    </div>
-  );
+function AppShell() {
+  const { user, logout, loading: authLoading } = useAuth(); const [route, setRoute] = useState<Route>(currentRoute); const [realtime, setRealtime] = useState('disconnected'); const [summary, setSummary] = useState<DashboardSummary | null>(null); const [dashboardDevices, setDashboardDevices] = useState<DashboardDevice[]>([]); const [devices, setDevices] = useState<Device[]>([]); const [alerts, setAlerts] = useState<Alert[]>([]); const [logs, setLogs] = useState<AuditLog[]>([]); const [total, setTotal] = useState(0); const [loading, setLoading] = useState(false); const [error, setError] = useState(''); const [passwordOpen, setPasswordOpen] = useState(false); const [reload, setReload] = useState(0);
+  useEffect(() => { const update = () => setRoute(currentRoute()); window.addEventListener('popstate', update); return () => window.removeEventListener('popstate', update); }, []);
+  useEffect(() => { if (!user) return; const socket: Socket = io(API_URL, { auth: { token: getAccessToken() }, withCredentials: true }); setRealtime('reconnecting'); socket.on('connect', () => setRealtime('connected')); socket.on('disconnect', () => setRealtime('disconnected')); socket.io.on('reconnect_attempt', () => setRealtime('reconnecting')); socket.on('telemetry:update', () => setReload((value) => value + 1)); socket.on('device:status', () => setReload((value) => value + 1)); socket.on('alert:new', () => setReload((value) => value + 1)); socket.on('connect_error', () => setRealtime('disconnected')); return () => { socket.close(); }; }, [user]);
+  useEffect(() => { if (!user || route.name === 'device' || route.name === 'users') return; setLoading(true); setError(''); const request = route.name === 'dashboard' ? Promise.all([api.dashboardSummary(), api.dashboardDevices()]).then(([nextSummary, nextDevices]) => { setSummary(nextSummary); setDashboardDevices(nextDevices.data); }) : route.name === 'devices' ? api.devicesFiltered({ limit: 100 }).then((result) => { setDevices(result.data); setTotal(result.total); }) : route.name === 'alerts' ? api.alerts({ limit: 100 }).then((result) => { setAlerts(result.data); setTotal(result.total); }) : api.auditLogs().then((result) => { setLogs(result.data); setTotal(result.total); }); void request.catch((requestError: unknown) => setError(requestError instanceof Error ? requestError.message : 'Không tải được dữ liệu')).finally(() => setLoading(false)); }, [user, route.name, reload]);
+  if (authLoading) return <LoadingScreen />; if (!user) return <LoginScreen />;
+  const admin = user.role === 'ADMIN'; const title = route.name === 'dashboard' ? 'Dashboard' : route.name === 'device' ? 'Chi tiết thiết bị' : route.name === 'devices' ? 'Thiết bị' : route.name === 'alerts' ? 'Cảnh báo' : route.name === 'users' ? 'Người dùng' : 'Audit Log'; const link = (event: React.MouseEvent<HTMLAnchorElement>, path: string) => { event.preventDefault(); go(path); };
+  return <div className="app-shell"><aside className="sidebar"><div className="sidebar-brand"><div className="brand-mark small">SL</div><div><strong>Smart Light</strong><span>Control room</span></div></div><nav aria-label="Điều hướng chính"><a className={route.name === 'dashboard' ? 'nav-item active' : 'nav-item'} href="/" onClick={(event) => link(event, '/')}>◈ Dashboard</a><a className={route.name === 'devices' || route.name === 'device' ? 'nav-item active' : 'nav-item'} href="/devices" onClick={(event) => link(event, '/devices')}>⌘ Devices</a><a className={route.name === 'alerts' ? 'nav-item active' : 'nav-item'} href="/alerts" onClick={(event) => link(event, '/alerts')}>! Alerts</a>{admin && <><a className={route.name === 'users' ? 'nav-item active' : 'nav-item'} href="/users" onClick={(event) => link(event, '/users')}>♙ Users</a><a className={route.name === 'audit' ? 'nav-item active' : 'nav-item'} href="/audit-logs" onClick={(event) => link(event, '/audit-logs')}>≡ Audit Log</a></>}</nav><div className="sidebar-footer"><RealtimeStatus status={realtime} /><button className="text-button" onClick={() => void logout()}>Đăng xuất</button></div></aside><main className="main-area"><header className="topbar"><div><p className="eyebrow">SMART LIGHTING SYSTEM</p><h2>{title}</h2></div><div className="top-actions"><RealtimeStatus status={realtime} /><span className="role-pill">{user.role}</span><button className="icon-button" aria-label="Đổi mật khẩu" onClick={() => setPasswordOpen(true)}>•••</button></div></header><div className="page-content">{error && <ErrorState message={error} onRetry={() => setReload((value) => value + 1)} />}{loading && <LoadingState />}{!loading && !error && route.name === 'dashboard' && <DashboardPage summary={summary} devices={dashboardDevices} />}{!loading && !error && route.name === 'devices' && <DevicesPage devices={devices} total={total} isAdmin={admin} />}{route.name === 'device' && route.deviceId && <DeviceDetail deviceId={route.deviceId} isAdmin={admin} />}{!loading && !error && route.name === 'alerts' && <AlertsPage alerts={alerts} total={total} canAct={user.role !== 'VIEWER'} onReload={() => setReload((value) => value + 1)} />}{route.name === 'users' && admin && <UserManagement currentUserId={user.user_id} />}{route.name === 'audit' && admin && <AuditPage logs={logs} total={total} />}{(route.name === 'users' || route.name === 'audit') && !admin && <EmptyState title="Bạn không có quyền truy cập" message="Chức năng này chỉ dành cho Admin." />}</div></main>{passwordOpen && <ChangePassword onClose={() => setPasswordOpen(false)} />}</div>;
 }
 
-function Metric({ label, value }: { label: string; value: string }) { return <div className="metric"><span>{label}</span><strong>{value}</strong></div>; }
+function DashboardPage({ summary, devices }: { summary: DashboardSummary | null; devices: DashboardDevice[] }) { return <><section className="page-heading"><div><p className="eyebrow">OVERVIEW</p><h1>Giám sát ánh sáng</h1><p className="muted">Trạng thái thiết bị và dữ liệu vận hành trong một màn hình.</p></div>{summary && <StatusBadge value={summary.system_status} label={summary.system_status} />}</section><section className="kpi-grid"><StatCard label="Thiết bị tổng" value={summary?.devices.total ?? 0} /><StatCard label="Online / Offline / Lỗi" value={`${summary?.devices.online ?? 0} / ${summary?.devices.offline ?? 0} / ${summary?.devices.fault ?? 0}`} /><StatCard label="Cảnh báo đang mở" value={summary?.alerts.active_count ?? 0} note={`${summary?.alerts.resolved_today ?? 0} đã xử lý hôm nay`} /><StatCard label="Công suất trung bình" value={`${Number(summary?.avg_power_watts ?? 0).toFixed(2)} W`} /></section><Panel title="Thiết bị gần đây" eyebrow="DEVICES" action={<a className="text-link" href="/devices" onClick={(event) => linkAndNavigate(event, '/devices')}>Xem tất cả</a>}>{devices.length ? <div className="dashboard-device-grid">{devices.map((device) => <button className="device-card" key={device.device_id} onClick={() => go(`/devices/${encodeURIComponent(device.device_id)}`)}><div className="card-row"><div><strong>{device.device_name}</strong><small>{device.device_id}</small></div><StatusBadge value={device.device_status} label={device.device_status} /></div><div className="device-metrics"><span>Lux <b>{device.lux ?? '--'}</b></span><span>Motion <b>{device.motion === null ? '--' : device.motion ? 'Có' : 'Không'}</b></span><span>Power <b>{device.power ?? '--'} W</b></span></div><label className="pwm-meter">PWM <progress max="100" value={device.pwm ?? 0} /> <b>{device.pwm ?? '--'}%</b></label><small className="muted">{device.last_seen_at ? `Cập nhật ${relativeTime(device.last_seen_at)}` : 'Chưa có tín hiệu'}</small></button>)}</div> : <EmptyState title="Chưa có thiết bị" message="Bạn chưa được cấp quyền truy cập thiết bị nào. Liên hệ Admin." />}</Panel></>; }
+function linkAndNavigate(event: React.MouseEvent<HTMLAnchorElement>, path: string) { event.preventDefault(); go(path); }
 
-const roleOptions: Array<{ id: number; name: ManagedUser['role_name']; label: string }> = [
-  { id: 1, name: 'ADMIN', label: 'Admin' },
-  { id: 2, name: 'OPERATOR', label: 'Operator' },
-  { id: 3, name: 'VIEWER', label: 'Viewer' },
-];
+function DevicesPage({ devices, total, isAdmin }: { devices: Device[]; total: number; isAdmin: boolean }) { const [status, setStatus] = useState(''); const [lifecycle, setLifecycle] = useState(''); const filtered = devices.filter((device) => (!status || device.device_status === status) && (!lifecycle || device.lifecycle_status === lifecycle)); return <><section className="page-heading"><div><p className="eyebrow">DEVICE MANAGEMENT</p><h1>Danh sách thiết bị</h1><p className="muted">{total} thiết bị trong phạm vi truy cập của bạn.</p></div>{isAdmin && <button className="primary-button" onClick={() => window.alert('Onboarding thiết bị sẽ dùng POST /devices theo contract.')}>Thêm thiết bị</button>}</section><Panel title="Bộ lọc" eyebrow="FILTERS"><div className="filter-bar"><label>Trạng thái<select value={status} onChange={(event) => setStatus(event.target.value)}><option value="">Tất cả</option><option value="ONLINE">Online</option><option value="OFFLINE">Offline</option><option value="FAULT">Lỗi</option></select></label><label>Vòng đời<select value={lifecycle} onChange={(event) => setLifecycle(event.target.value)}><option value="">Tất cả</option>{['REGISTERED', 'PROVISIONED', 'ACTIVE', 'MAINTENANCE', 'DECOMMISSIONED'].map((value) => <option key={value}>{value}</option>)}</select></label></div></Panel><Panel title="Thiết bị" eyebrow="INVENTORY"><div className="data-table"><div className="table-header"><span>Thiết bị</span><span>Vị trí</span><span>Trạng thái</span><span>Vòng đời</span><span>Hoạt động cuối</span></div>{filtered.map((device) => <button className={`table-row ${device.lifecycle_status === 'DECOMMISSIONED' ? 'decommissioned' : ''}`} key={device.device_id} onClick={() => go(`/devices/${encodeURIComponent(device.device_id)}`)}><span><strong>{device.device_name}</strong><small>{device.device_id}</small></span><span>{device.location ?? 'Chưa gán'}</span><StatusBadge value={device.device_status} label={device.device_status} /><StatusBadge value={device.lifecycle_status} label={device.lifecycle_status} /><span>{device.last_seen_at ? relativeTime(device.last_seen_at) : 'Chưa có'}</span></button>)}{!filtered.length && <EmptyState title="Chưa có thiết bị" message={isAdmin ? 'Bấm Thêm thiết bị để bắt đầu.' : 'Bạn chưa được cấp quyền truy cập thiết bị nào.'} />}</div></Panel></>; }
 
-function UserManagement() {
-  const [users, setUsers] = useState<ManagedUser[]>([]);
-  const [total, setTotal] = useState(0);
-  const [modalMode, setModalMode] = useState<'create' | 'edit' | null>(null);
-  const [editingUser, setEditingUser] = useState<ManagedUser | null>(null);
-  const [form, setForm] = useState({ username: '', email: '', password: '', role_id: 2 });
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
+function DeviceDetail({ deviceId, isAdmin }: { deviceId: string; isAdmin: boolean }) { const [device, setDevice] = useState<Device | null>(null); const [history, setHistory] = useState<Telemetry[]>([]); const [tab, setTab] = useState('overview'); const [pwm, setPwm] = useState(60); const [message, setMessage] = useState(''); useEffect(() => { void Promise.all([api.device(deviceId), api.telemetry(deviceId)]).then(([nextDevice, nextHistory]) => { setDevice(nextDevice); setHistory(nextHistory.data); }).catch((loadError: unknown) => setMessage(loadError instanceof Error ? loadError.message : 'Không tìm thấy thiết bị')); }, [deviceId]); if (message) return <ErrorState message={message} onRetry={() => window.location.reload()} />; if (!device) return <LoadingState />; const send = async (command: 'ON' | 'OFF' | 'PWM') => { try { await api.command(deviceId, command, command === 'PWM' ? pwm : undefined); setMessage('Đã gửi lệnh điều khiển.'); } catch (commandError) { setMessage(commandError instanceof Error ? commandError.message : 'Không gửi được lệnh'); } }; const latest = history.length ? history[history.length - 1] : null; return <><section className="page-heading"><div><button className="back-link" onClick={() => go('/devices')}>← Thiết bị</button><h1>{device.device_name}</h1><p className="muted">{device.device_id} · {device.location ?? 'Chưa gán vị trí'} · Firmware {device.firmware_version}</p></div><div className="status-stack"><StatusBadge value={device.device_status} label={device.device_status} /><StatusBadge value={device.lifecycle_status} label={device.lifecycle_status} /></div></section><div className="tabs">{['overview', 'telemetry', 'control', ...(isAdmin ? ['config', 'lifecycle'] : [])].map((value) => <button className={tab === value ? 'active' : ''} key={value} onClick={() => setTab(value)}>{value === 'overview' ? 'Overview' : value === 'telemetry' ? 'Telemetry' : value === 'control' ? 'Control' : value === 'config' ? 'Adaptive Config' : 'Lifecycle'}</button>)}</div>{message && <div className="notice success-text">{message}</div>}{tab === 'overview' && <Panel title="Latest telemetry" eyebrow="OVERVIEW"><TelemetryMetrics value={latest} /></Panel>}{tab === 'telemetry' && <Panel title="Telemetry history" eyebrow="LAST 200 POINTS"><TelemetryChart data={history} /></Panel>}{tab === 'control' && <Panel title="Điều khiển ánh sáng" eyebrow="CONTROL">{!isAdmin && device.device_status === 'OFFLINE' ? <EmptyState title="Thiết bị đang offline" message="Điều khiển sẽ được mở lại khi thiết bị kết nối." /> : <div className="control-surface"><div className="control-buttons"><button className="secondary-button" onClick={() => void send('ON')}>Bật đèn</button><button className="secondary-button" onClick={() => void send('OFF')}>Tắt đèn</button></div><label>Độ sáng <b>{pwm}%</b><input type="range" min="0" max="100" value={pwm} onChange={(event) => setPwm(Number(event.target.value))} /></label><button className="primary-button" onClick={() => void send('PWM')}>Áp dụng PWM</button></div>}</Panel>}{tab === 'config' && <Panel title="Adaptive Lighting" eyebrow="ADMIN"><pre className="config-preview">{JSON.stringify(device.adaptive_config ?? {}, null, 2)}</pre></Panel>}{tab === 'lifecycle' && <Panel title="Lifecycle" eyebrow="ADMIN"><p className="muted">Trạng thái hiện tại: <strong>{device.lifecycle_status}</strong>. Các transition hợp lệ sẽ được backend quyết định.</p></Panel>}</>; }
 
-  async function loadUsers() {
-    try {
-      const result = await api.users();
-      setUsers(result.data);
-      setTotal(result.total);
-      setError('');
-    } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : 'Không tải được danh sách người dùng');
-    }
-  }
+function AlertsPage({ alerts, total, canAct, onReload }: { alerts: Alert[]; total: number; canAct: boolean; onReload: () => void }) { const [status, setStatus] = useState(''); const [severity, setSeverity] = useState(''); const shown = alerts.filter((alert) => (!status || alert.status === status) && (!severity || alert.severity === severity)); const act = async (alert: Alert, action: 'acknowledge' | 'resolve') => { if (action === 'acknowledge') await api.acknowledgeAlert(alert.alert_id); else await api.resolveAlert(alert.alert_id); onReload(); }; return <><section className="page-heading"><div><p className="eyebrow">OPERATIONS</p><h1>Cảnh báo</h1><p className="muted">{total} cảnh báo theo phạm vi thiết bị của bạn.</p></div></section><Panel title="Bộ lọc" eyebrow="FILTERS"><div className="filter-bar"><label>Trạng thái<select value={status} onChange={(event) => setStatus(event.target.value)}><option value="">Tất cả</option><option value="NEW">Mới</option><option value="ACKNOWLEDGED">Đã xác nhận</option><option value="RESOLVED">Đã xử lý</option></select></label><label>Mức độ<select value={severity} onChange={(event) => setSeverity(event.target.value)}><option value="">Tất cả</option>{['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'].map((value) => <option key={value}>{value}</option>)}</select></label></div></Panel><Panel title="Danh sách cảnh báo" eyebrow="ALERTS"><div className="data-table"><div className="table-header"><span>Cảnh báo</span><span>Mức độ</span><span>Trạng thái</span><span>Thời gian</span><span>Thao tác</span></div>{shown.map((alert) => <div className="table-row" key={alert.alert_id}><span><strong>{alert.alert_type}</strong><small>{alert.device_id} · {alert.message}</small></span><StatusBadge value={alert.severity} label={alert.severity} /><StatusBadge value={alert.status} label={alert.status} /><span>{relativeTime(alert.created_at)}</span><span className="row-actions">{canAct && alert.status === 'NEW' && <button className="table-button" onClick={() => void act(alert, 'acknowledge')}>Xác nhận</button>}{canAct && alert.status !== 'RESOLVED' && <button className="table-button" onClick={() => void act(alert, 'resolve')}>Giải quyết</button>}</span></div>)}{!shown.length && <EmptyState title="Không có cảnh báo nào" message="Các cảnh báo mới sẽ xuất hiện ở đây." />}</div></Panel></>; }
+function AuditPage({ logs, total }: { logs: AuditLog[]; total: number }) { return <><section className="page-heading"><div><p className="eyebrow">ADMINISTRATION</p><h1>Audit Log</h1><p className="muted">{total} hoạt động được ghi nhận.</p></div></section><Panel title="Nhật ký hoạt động" eyebrow="AUDIT"><div className="data-table"><div className="table-header"><span>Thời gian</span><span>Hành động</span><span>Thiết bị</span><span>Mô tả</span></div>{logs.map((log) => <div className="table-row" key={log.log_id}><span>{new Date(log.created_at).toLocaleString('vi-VN')}</span><strong>{log.action}</strong><span>{log.device_id ?? '--'}</span><span>{log.description ?? '--'}</span></div>)}</div></Panel></>; }
 
-  useEffect(() => {
-    void loadUsers();
-  }, []);
+const roles = [{ id: 1, label: 'Admin' }, { id: 2, label: 'Operator' }, { id: 3, label: 'Viewer' }];
+function UserManagement({ currentUserId }: { currentUserId: string }) { const [users, setUsers] = useState<ManagedUser[]>([]); const [total, setTotal] = useState(0); const [modal, setModal] = useState<'create' | 'edit' | null>(null); const [editing, setEditing] = useState<ManagedUser | null>(null); const [form, setForm] = useState({ username: '', email: '', password: '', role_id: 2 }); const [error, setError] = useState(''); const [busy, setBusy] = useState(false); const load = async () => { try { const result = await api.users(); setUsers(result.data); setTotal(result.total); } catch (loadError) { setError(loadError instanceof Error ? loadError.message : 'Không tải được người dùng'); } }; useEffect(() => { void load(); }, []); const open = (user?: ManagedUser) => { setEditing(user ?? null); setForm({ username: user?.username ?? '', email: user?.email ?? '', password: '', role_id: user?.role_id ?? 2 }); setError(''); setModal(user ? 'edit' : 'create'); }; const submit = async (event: FormEvent) => { event.preventDefault(); setBusy(true); try { if (modal === 'create') await api.createUser({ username: form.username, email: form.email, password: form.password, role_id: form.role_id }); else if (editing) await api.updateUser(editing.user_id, { email: form.email, role_id: form.role_id }); setModal(null); await load(); } catch (submitError) { setError(submitError instanceof Error ? submitError.message : 'Không thể lưu người dùng'); } finally { setBusy(false); } }; const toggle = async (user: ManagedUser) => { if (user.user_id === currentUserId && user.status === 'ACTIVE') return; if (user.status === 'ACTIVE' && !window.confirm(`Khóa tài khoản ${user.username}?`)) return; setBusy(true); try { await api.updateUserStatus(user.user_id, user.status === 'ACTIVE' ? 'LOCKED' : 'ACTIVE'); await load(); } catch (toggleError) { setError(toggleError instanceof Error ? toggleError.message : 'Không thể cập nhật trạng thái'); } finally { setBusy(false); } }; return <><section className="page-heading"><div><p className="eyebrow">ADMINISTRATION</p><h1>Quản lý người dùng</h1><p className="muted">Quản lý tài khoản, vai trò và trạng thái truy cập.</p></div><button className="primary-button" onClick={() => open()}>Thêm người dùng</button></section><Panel title="Users" eyebrow={`${total} ACCOUNTS`}>{error && <ErrorState message={error} />}<div className="data-table"><div className="table-header"><span>Tài khoản</span><span>Vai trò</span><span>Trạng thái</span><span>Ngày tạo</span><span>Thao tác</span></div>{users.map((user) => <div className="table-row" key={user.user_id}><span><strong>{user.username}</strong><small>{user.email}</small></span><span>{user.role_name}</span><StatusBadge value={user.status} label={user.status} /><span>{new Date(user.created_at).toLocaleDateString('vi-VN')}</span><span className="row-actions"><button className="table-button" onClick={() => open(user)}>Sửa</button><button className="table-button" disabled={busy || user.user_id === currentUserId} onClick={() => void toggle(user)}>{user.status === 'ACTIVE' ? 'Khóa' : 'Mở khóa'}</button></span></div>)}</div></Panel>{modal && <div className="modal-backdrop"><form className="modal" onSubmit={submit}><div className="panel-heading"><h2>{modal === 'create' ? 'Thêm người dùng' : 'Cập nhật người dùng'}</h2><button type="button" className="icon-button" aria-label="Đóng" onClick={() => setModal(null)}>×</button></div>{modal === 'create' ? <label>Tên đăng nhập<input value={form.username} onChange={(event) => setForm({ ...form, username: event.target.value })} required /></label> : <p className="readonly-field">Tên đăng nhập <strong>{form.username}</strong></p>}<label>Email<input type="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} required /></label>{modal === 'create' && <label>Mật khẩu<input type="password" minLength={8} value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} required /></label>}<label>Vai trò<select value={form.role_id} onChange={(event) => setForm({ ...form, role_id: Number(event.target.value) })}>{roles.map((role) => <option value={role.id} key={role.id}>{role.label}</option>)}</select></label>{error && <ErrorState message={error} />}<button className="primary-button" disabled={busy}>{busy ? 'Đang lưu...' : 'Lưu thay đổi'}</button></form></div>}</>; }
 
-  function openCreate() {
-    setEditingUser(null);
-    setForm({ username: '', email: '', password: '', role_id: 2 });
-    setError('');
-    setModalMode('create');
-  }
+function ChangePassword({ onClose }: { onClose: () => void }) { const [current, setCurrent] = useState(''); const [next, setNext] = useState(''); const [confirm, setConfirm] = useState(''); const [message, setMessage] = useState(''); const submit = async (event: FormEvent) => { event.preventDefault(); if (next !== confirm) { setMessage('Mật khẩu xác nhận không khớp'); return; } try { await api.changePassword(current, next); setMessage('Đã đổi mật khẩu'); } catch (error) { setMessage(error instanceof Error ? error.message : 'Không thể đổi mật khẩu'); } }; return <div className="modal-backdrop"><form className="modal" onSubmit={submit}><div className="panel-heading"><h2>Đổi mật khẩu</h2><button type="button" className="icon-button" aria-label="Đóng" onClick={onClose}>×</button></div><label>Mật khẩu hiện tại<input type="password" value={current} onChange={(event) => setCurrent(event.target.value)} required /></label><label>Mật khẩu mới<input type="password" minLength={8} value={next} onChange={(event) => setNext(event.target.value)} required /></label><label>Xác nhận mật khẩu mới<input type="password" minLength={8} value={confirm} onChange={(event) => setConfirm(event.target.value)} required /></label>{message && <p className="form-hint">{message}</p>}<button className="primary-button">Cập nhật</button></form></div>; }
 
-  function openEdit(user: ManagedUser) {
-    setEditingUser(user);
-    setForm({ username: user.username, email: user.email, password: '', role_id: user.role_id });
-    setError('');
-    setModalMode('edit');
-  }
-
-  async function submit(event: FormEvent) {
-    event.preventDefault();
-    setBusy(true);
-    setError('');
-    try {
-      if (modalMode === 'create') {
-        await api.createUser({
-          username: form.username,
-          email: form.email,
-          password: form.password,
-          role_id: form.role_id,
-        });
-      } else if (editingUser) {
-        await api.updateUser(editingUser.user_id, { email: form.email, role_id: form.role_id });
-      }
-      setModalMode(null);
-      await loadUsers();
-    } catch (submitError) {
-      setError(submitError instanceof Error ? submitError.message : 'Không thể lưu người dùng');
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function toggleStatus(user: ManagedUser) {
-    setBusy(true);
-    setError('');
-    try {
-      await api.updateUserStatus(user.user_id, user.status === 'ACTIVE' ? 'LOCKED' : 'ACTIVE');
-      await loadUsers();
-    } catch (statusError) {
-      setError(statusError instanceof Error ? statusError.message : 'Không thể cập nhật trạng thái');
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <>
-      <div className="panel-heading">
-        <div><span className="section-kicker">USERS</span><h3>Quản lý người dùng</h3></div>
-        <button className="primary-button compact-button" onClick={openCreate}>Thêm người dùng</button>
-      </div>
-      {error && <p className="error-text">{error}</p>}
-      <div className="user-table" role="table" aria-label="Danh sách người dùng">
-        <div className="user-row user-table-header" role="row">
-          <span>Tài khoản</span><span>Vai trò</span><span>Trạng thái</span><span>Thao tác</span>
-        </div>
-        {users.map((managedUser) => (
-          <div className="user-row" role="row" key={managedUser.user_id}>
-            <div><strong>{managedUser.username}</strong><small>{managedUser.email}</small></div>
-            <span className="role-label">{managedUser.role_name}</span>
-            <span className={`user-status ${managedUser.status.toLowerCase()}`}>{managedUser.status === 'ACTIVE' ? 'Đang hoạt động' : 'Đã khóa'}</span>
-            <div className="user-actions">
-              <button className="table-button" onClick={() => openEdit(managedUser)}>Sửa</button>
-              <button className="table-button" disabled={busy} onClick={() => void toggleStatus(managedUser)}>{managedUser.status === 'ACTIVE' ? 'Khóa' : 'Mở khóa'}</button>
-            </div>
-          </div>
-        ))}
-        {users.length === 0 && <p className="empty">Chưa có người dùng nào.</p>}
-      </div>
-      <p className="table-footer">{total} người dùng</p>
-      {modalMode && (
-        <div className="modal-backdrop">
-          <form className="modal user-modal" onSubmit={submit}>
-            <div className="panel-heading"><h3>{modalMode === 'create' ? 'Thêm người dùng' : 'Cập nhật người dùng'}</h3><button type="button" className="icon-button" onClick={() => setModalMode(null)}>×</button></div>
-            {modalMode === 'create' && <label>Tên đăng nhập<input value={form.username} onChange={(event) => setForm({ ...form, username: event.target.value })} required maxLength={50} /></label>}
-            {modalMode === 'edit' && <div className="readonly-field"><span>Tên đăng nhập</span><strong>{form.username}</strong></div>}
-            <label>Email<input type="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} required maxLength={100} /></label>
-            {modalMode === 'create' && <label>Mật khẩu<input type="password" value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} minLength={8} required /></label>}
-            <label>Vai trò<select value={form.role_id} onChange={(event) => setForm({ ...form, role_id: Number(event.target.value) })}>{roleOptions.map((role) => <option key={role.id} value={role.id}>{role.label}</option>)}</select></label>
-            {error && <p className="error-text">{error}</p>}
-            <button className="primary-button full" disabled={busy}>{busy ? 'Đang lưu...' : 'Lưu thay đổi'}</button>
-          </form>
-        </div>
-      )}
-    </>
-  );
-}
-
-function ChangePassword({ onClose }: { onClose: () => void }) {
-  const [current, setCurrent] = useState('');
-  const [next, setNext] = useState('');
-  const [message, setMessage] = useState('');
-  async function submit(event: FormEvent) { event.preventDefault(); try { await api.changePassword(current, next); setMessage('Đã đổi mật khẩu'); setCurrent(''); setNext(''); } catch (error) { setMessage(error instanceof Error ? error.message : 'Không thể đổi mật khẩu'); } }
-  return <div className="modal-backdrop"><form className="modal" onSubmit={submit}><div className="panel-heading"><h3>Đổi mật khẩu</h3><button type="button" className="icon-button" onClick={onClose}>×</button></div><label>Mật khẩu hiện tại<input type="password" value={current} onChange={(event) => setCurrent(event.target.value)} required /></label><label>Mật khẩu mới<input type="password" value={next} onChange={(event) => setNext(event.target.value)} minLength={8} required /></label>{message && <p className="muted">{message}</p>}<button className="primary-button full">Cập nhật</button></form></div>;
-}
-
-export function App() { return <AuthProvider><Dashboard /></AuthProvider>; }
+function Panel({ title, eyebrow, action, children }: { title: string; eyebrow?: string; action?: ReactNode; children: ReactNode }) { return <section className="panel"><div className="panel-heading"><div>{eyebrow && <span className="section-kicker">{eyebrow}</span>}<h2>{title}</h2></div>{action}</div>{children}</section>; }
+function StatCard({ label, value, note }: { label: string; value: ReactNode; note?: string }) { return <div className="stat-card"><span>{label}</span><strong>{value}</strong>{note && <small>{note}</small>}</div>; }
+function StatusBadge({ value, label }: { value: string; label: string }) { return <span className={`status-badge status-${value.toLowerCase()}`}><i />{label}</span>; }
+function RealtimeStatus({ status }: { status: string }) { const label = status === 'connected' ? 'Realtime: đang kết nối' : status === 'reconnecting' ? 'Realtime: đang kết nối lại…' : 'Realtime: ngắt'; return <span className={`realtime-status ${status}`}><i />{label}</span>; }
+function TelemetryMetrics({ value }: { value: Telemetry | null }) { return <div className="metric-grid"><StatCard label="Độ sáng" value={value ? `${value.lux} lx` : '--'} /><StatCard label="PWM" value={value ? `${value.pwm}%` : '--'} /><StatCard label="Công suất" value={value ? `${value.power} W` : '--'} /><StatCard label="Chuyển động" value={value ? (value.motion ? 'Phát hiện' : 'Ổn định') : '--'} /></div>; }
+function TelemetryChart({ data }: { data: Telemetry[] }) { if (!data.length) return <EmptyState title="Chưa có dữ liệu" message="Chưa có dữ liệu telemetry trong khoảng thời gian này." />; return <div className="chart-wrap"><ResponsiveContainer width="100%" height="100%"><LineChart data={data}><XAxis dataKey="timestamp" hide /><YAxis yAxisId="left" /><YAxis yAxisId="right" orientation="right" domain={[0, 100]} /><Tooltip /><Line yAxisId="left" type="monotone" dataKey="lux" name="Lux" stroke="#2563eb" dot={false} /><Line yAxisId="right" type="monotone" dataKey="pwm" name="PWM %" stroke="#f59e0b" dot={false} /></LineChart></ResponsiveContainer></div>; }
+function EmptyState({ title, message }: { title: string; message: string }) { return <div className="empty-state"><strong>{title}</strong><p>{message}</p></div>; }
+function ErrorState({ message, onRetry }: { message: string; onRetry?: () => void }) { return <div className="error-state"><strong>Không thể tải dữ liệu</strong><p>{message}</p>{onRetry && <button className="secondary-button" onClick={onRetry}>Thử lại</button>}</div>; }
+function LoadingState() { return <div className="loading-state"><span /><span /><span /></div>; }
+function LoadingScreen() { return <main className="loading-screen"><div className="brand-mark">SL</div><p>Đang khôi phục phiên đăng nhập...</p></main>; }
+function relativeTime(value: string): string { const seconds = Math.max(0, Math.round((Date.now() - new Date(value).getTime()) / 1000)); if (seconds < 60) return `${seconds} giây trước`; const minutes = Math.round(seconds / 60); if (minutes < 60) return `${minutes} phút trước`; return `${Math.round(minutes / 60)} giờ trước`; }
+export function App() { return <AuthProvider><AppShell /></AuthProvider>; }
