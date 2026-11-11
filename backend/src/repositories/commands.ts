@@ -2,7 +2,7 @@ import { Pool } from 'pg';
 import { AppError, ErrorCode } from '../errors/AppError.js';
 import { RoleName } from './device.js';
 
-export type CommandType = 'PWM' | 'ON' | 'OFF';
+export type CommandType = 'PWM' | 'ON' | 'OFF' | 'CONFIG_UPDATE';
 
 export interface Command {
   command_id: string;
@@ -10,10 +10,11 @@ export interface Command {
   user_id: string | null;
   command_type: CommandType;
   command_value: number | null;
+  result: string | null;
   status: 'PENDING' | 'SENT' | 'ACKNOWLEDGED' | 'TIMEOUT' | 'FAILED';
   sent_at: string;
   ack_at: string | null;
-  result: string | null;
+  config_version?: number;
 }
 
 export interface CommandInput {
@@ -22,6 +23,7 @@ export interface CommandInput {
   role: RoleName;
   commandType: CommandType;
   commandValue: number | null;
+  configVersion?: number;
   ipAddress: string | null;
 }
 
@@ -70,11 +72,11 @@ export class CommandRepo {
       }
 
       const commandResult = await client.query<Command>(
-        `INSERT INTO command (device_id, user_id, command_type, command_value)
-         VALUES ($1, $2, $3, $4)
+        `INSERT INTO command (device_id, user_id, command_type, command_value, result)
+         VALUES ($1, $2, $3, $4, $5::jsonb)
          RETURNING command_id, device_id, user_id, command_type, command_value,
                    status, sent_at, ack_at, result`,
-        [input.deviceId, input.userId, input.commandType, input.commandValue]
+        [input.deviceId, input.userId, input.commandType, input.commandValue, JSON.stringify({ configVersion: input.configVersion })]
       );
       const command = commandResult.rows[0];
 
@@ -114,7 +116,16 @@ export class CommandRepo {
        FROM command WHERE command_id = $1`,
       [commandId]
     );
-    return result.rows[0] ?? null;
+    const row = result.rows[0] ?? null;
+    if (row && row.result) {
+      try {
+        const r = JSON.parse(row.result);
+        row.config_version = r.config_version ?? null;
+      } catch (e) {
+        // ignore parse error
+      }
+    }
+    return row;
   }
 
   async updateResult(
@@ -132,6 +143,15 @@ export class CommandRepo {
          RETURNING command_id, device_id, user_id, command_type, command_value,
                    status, sent_at, ack_at, result`;
     const updated = await this.pool.query<Command>(query, [status, result, commandId]);
-    return updated.rows[0] ?? null;
+    const row = updated.rows[0];
+    if (row && row.result) {
+      try {
+        const r = JSON.parse(row.result);
+        row.config_version = r.config_version ?? null;
+      } catch (e) {
+        // ignore parse error
+      }
+    }
+    return row ?? null;
   }
 }

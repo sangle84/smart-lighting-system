@@ -19,7 +19,7 @@ import { createOperationsRoutes } from './routes/operations.js';
 import { CommandPublisher, CommandRepo } from './repositories/commands.js';
 import { CommandController } from './controllers/commands.js';
 import { createCommandRoutes } from './routes/commands.js';
-import { MqttService } from './mqtt/service.js';
+import { ConfigPayload, MqttService } from './mqtt/service.js';
 import { RealtimeGateway } from './realtime/gateway.js';
 
 // Database pool
@@ -42,6 +42,10 @@ export function createApp(
 
   app.locals.setRealtimeGateway = (gateway: RealtimeGateway): void => {
     deviceController.setRealtimeGateway(gateway);
+  };
+
+  app.locals.setMqttService = (service: { publishConfig(deviceId: string, config: ConfigPayload): Promise<void> }): void => {
+    deviceController.setMqttService(service);
   };
 
   app.use(cors({ origin: true, credentials: true }));
@@ -73,6 +77,7 @@ if (require.main === module) {
   });
   const realtime = new RealtimeGateway(pool, server);
   app.locals.setRealtimeGateway(realtime);
+  app.locals.setMqttService(mqttService);
   mqttService.setRealtimeGateway(realtime);
   mqttService.connect();
 

@@ -11,6 +11,7 @@ export type LifecycleStatus =
 export type RoleName = 'ADMIN' | 'OPERATOR' | 'VIEWER';
 
 export interface AdaptiveConfig {
+  config_version: number;
   enabled: boolean;
   motion_timeout_sec: number;
   lux_thresholds: Array<{ min_lux: number; pwm: number }>;

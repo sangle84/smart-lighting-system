@@ -471,6 +471,10 @@ void setupTopics() {
 
 void setupWiFi() {
   WiFi.mode(WIFI_STA);
+  
+  // Force DHCP mode to clear any previous static IP config
+  WiFi.config(IPAddress(), IPAddress(), IPAddress(), IPAddress());
+  
   Serial.printf("[WIFI] Connecting to %s...\n", WIFI_SSID);
   Serial.println("[WIFI] Note: Password is hidden for security.");
 
@@ -488,6 +492,8 @@ void setupWiFi() {
     Serial.println("[WIFI] Connected successfully!");
     Serial.print("[WIFI] IP Address: ");
     Serial.println(WiFi.localIP());
+    Serial.print("[WIFI] Gateway: ");
+    Serial.println(WiFi.gatewayIP());
     Serial.print("[WIFI] RSSI: ");
     Serial.print(WiFi.RSSI());
     Serial.println(" dBm");

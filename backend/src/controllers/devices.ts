@@ -12,6 +12,7 @@ import {
   RoleName,
 } from '../repositories/device.js';
 import type { RealtimeGateway } from '../realtime/gateway.js';
+import type { ConfigPayload } from '../mqtt/service.js';
 
 const deviceStatuses: DeviceStatus[] = ['ONLINE', 'OFFLINE', 'FAULT'];
 const lifecycleStatuses: LifecycleStatus[] = [
@@ -24,11 +25,16 @@ const lifecycleStatuses: LifecycleStatus[] = [
 
 export class DeviceController {
   private realtimeGateway?: RealtimeGateway;
+  private mqttService?: { publishConfig(deviceId: string, config: ConfigPayload): Promise<void> };
 
   constructor(private readonly deviceRepo: DeviceRepo) {}
 
   setRealtimeGateway(realtimeGateway: RealtimeGateway): void {
     this.realtimeGateway = realtimeGateway;
+  }
+
+  setMqttService(mqttService: { publishConfig(deviceId: string, config: ConfigPayload): Promise<void> }): void {
+    this.mqttService = mqttService;
   }
 
   async list(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
@@ -148,13 +154,28 @@ export class DeviceController {
 
   async updateConfig(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const adaptiveConfig = (req.body as Record<string, unknown>).adaptive_config;
-      this.validateConfig(adaptiveConfig);
+      const adaptiveConfigRaw = (req.body as Record<string, unknown>).adaptive_config;
+      this.validateConfig(adaptiveConfigRaw);
+      const adaptiveConfig = adaptiveConfigRaw as AdaptiveConfig;
       const device = await this.deviceRepo.updateConfig(
         req.params.id,
-        adaptiveConfig as AdaptiveConfig
+        adaptiveConfig
       );
       if (!device) throw new AppError(ErrorCode.NOT_FOUND, 'Không tìm thấy thiết bị');
+
+      // Publish config to MQTT
+      const configPayload: ConfigPayload = {
+        config_version: adaptiveConfig.config_version,
+        enabled: adaptiveConfig.enabled,
+        motion_timeout_sec: adaptiveConfig.motion_timeout_sec,
+        lux_thresholds: adaptiveConfig.lux_thresholds,
+        no_motion_pwm: adaptiveConfig.no_motion_pwm,
+        timestamp: new Date().toISOString(),
+      };
+      await this.mqttService?.publishConfig(req.params.id, configPayload).catch((error) => {
+        console.error(`[updateConfig] MQTT publish failed for device ${req.params.id}:`, error);
+      });
+
       res.json({
         device_id: device.device_id,
         adaptive_config: device.adaptive_config,
